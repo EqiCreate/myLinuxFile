@@ -5,3 +5,4 @@
 4 git clone 时候要可能要改https为git才行,也是比较奇怪的地方
 5 git 经过验证还是ssh key比较靠谱 
 6 gcc -o main main.c
+7 守护进程 需要释放父进程和修改文件描述符等
