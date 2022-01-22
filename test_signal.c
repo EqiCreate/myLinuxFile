@@ -14,6 +14,7 @@ void handler(int arg){
 
 int main (int argc,const char* argv[])
 {
+	printf("-------begin--------");
 	if(signal(SIGINT,handler) ==SIG_ERR)
 	{ errlog("signal error");}
 	if(signal(SIGTSTP,SIG_IGN) ==SIG_ERR)
