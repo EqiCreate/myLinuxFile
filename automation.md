@@ -2,7 +2,7 @@
 # Status
 + ## Sytem
     + systemctl status
-    + system [] start|restart
+    + systemctl [xxx] start|restart
 + ## Application
 + ## Net
     + ``netstat -ntlp | grep 22``
@@ -11,4 +11,5 @@
     + ~~firewall-cmd --permanent --add-rich-rule="rule family="ipv4" source address=" 10.0.0.36" port protocol="tcp" port="7231" accept"~~
     + <mark>ufw status;ufw allow xxx ;ufw enable/disable;</mark>
 + ## vscode
+    + <mark> proxy set for http & https
     + cappsettings.json --ip</mark>
