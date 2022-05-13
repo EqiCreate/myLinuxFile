@@ -24,6 +24,10 @@
         select * from t1 where (id,k) in ((11,0),(22,0))  //which will go throught whole table
         select * from t1 where (id=11 and k=0) or (id=22,k=0) //which will go throught 'index'
     ```
+    - preload
+    ```js
+        seletct count(*) from table; <==> buffer_pool_dump_at_shutdown
+    ```
 - script freequent
     - show
     ```js
@@ -39,6 +43,7 @@
 - variable freequent 
 ```JS
     innodb_buffer_pool_dump_at_shutdown;// searilise entity to disk
+    optimiser_switch // MRR ,multi range read,order IO rather than radam IO
 ```
 - tool freequent
 ```js
