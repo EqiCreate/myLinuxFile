@@ -128,10 +128,10 @@ int main()
     // char y[10],*str4;
     // stpcpy(str4=y+1,str3);
     int M=2;int a=0;
-    M=(M)?(a++):(a--);
+    (M)?(a++):(a--);
     if (M)
     {
-       printf("\' 11\b 22 \11692 \n");
+       printf("%-06d \n",M);
     }
     
 
