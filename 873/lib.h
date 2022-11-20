@@ -3,13 +3,14 @@
 typedef union 
 {
     int nodeDepth;
-    char value;
+    double value;
 }NodeBody;
 
 typedef struct Node
 {
     int id;
     NodeBody body;
+    char tag;
     
 }TreeNode,*Tree;
 
