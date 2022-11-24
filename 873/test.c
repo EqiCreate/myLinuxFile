@@ -127,14 +127,16 @@ int main()
     // char *str3="abcdefghi";
     // char y[10],*str4;
     // stpcpy(str4=y+1,str3);
-    int M=2;int a=0;
-    (M)?(a++):(a--);
-    if (M)
-    {
-       printf("%-06d \n",M);
-    }
+    // int M=2;int a=0;
+    // (M)?(a++):(a--);
+    // if (M)
+    // {
+    //    printf("%-06d \n",M);
+    // }
     
-
+    int (*array[2])[3];
+    int (*p)[10];
+    printf("sizeof array=%d sizeof p =%d ,sizeof array[0] =%d \n", sizeof(array),sizeof(p),sizeof(array[0]));
     
     return 0;
 }
