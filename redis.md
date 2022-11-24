@@ -1,3 +1,12 @@
+### 20221124
+- jemolloc
+  - 基于？？？的内存分配器
+  - 分配内存使用SLAB算法，类似伙伴算法，2的指数次大小块，但是在基础上增加优化??
+  - 根据线程分配内存，一个cpu一个arena块
+  - 每个arena 包含一个bin数组，可能是用于记录大中小3个档位的？？？
+  - 每个arena 被划分几个chunks,chunks包含若干个run,run由连续page组成
+  - run还会划分若干个region
+  - 每个线程对应一个tcache私有缓存，对应一个arena,本身也有一个bin数组，但是它没有run。每次tcache从arena中申请一批内存，首先在tcache中寻找，从而避免锁竞争，分配失败才通过run执行内存分配
 ### 20221122
 - data structure
   - string,hash,list,set,zset(有序列表)
