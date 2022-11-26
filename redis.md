@@ -1,3 +1,50 @@
+### 20221125 
+- Makefile 
+  - 规则
+    ``` makefile(
+      目标(生成的文件，all 表示？？？) : 依赖（由哪些文件生成）
+        命令1
+        命令2
+    ```
+  - $() 取值
+  - var a := A, 克隆赋值
+  - var a= A ,浅拷贝赋值，会被后面逻辑覆盖
+  - var a?= A ,如果变量没有赋值，则赋值后面的值
+  - @echo "aa" 去除回显@  
+  - 函数 $(funcname p1,p2,p3 ...)
+  - clean: rm -rf xxxx
+  - .PHONY 伪目标??? 强制让程序继续下
+  - Makefile.dep 先执行的部分??????
+- 在.c 文件中定义变量，在.h 文件中extern 这个变量，使这个变量变成全局变量！！！
+- define 宏定义 是可以传参的比如,
+  ```c
+    #define show(a,b,c)\
+    printf(xxxx,a)...
+  ```
+- dict 类型????
+  - dictType : 定义函数指针,包括 hashFunction,keyDup,valDup,keyComparer,keyDestructor,valDestructor,expandAllowed
+  - dictEntry: 链表，union 一个val
+    - 定义一个数组指针 metadata
+    - 定义 函数指针 key (void *key)
+- ACL :access control list
+  - 规定一个默认的账户用来实现不需要密码登陆的服务??
+- aeEventLoop 实际上根据这个事件是否结束来决定是否退出server 进程
+- epoll 基于回调的: 多路复用?????
+- connection
+  - type
+    - connectionState
+    - connetctionType
+      - conn
+      - init();cleanup();
+    - flag,refs,last_error,private_data,fd
+    - Func: conn_handler,write_handler,read_handler
+  - 行为
+    - 新建connLister ,创建TCP，TLS，UNIX的connListenr并记录在全局数组中
+    - 连接connListen(Listener)
+      - listener->ct->listen(listener)
+    - 创建socket句柄 ,createSocketAcceptHandler-->aeCreateFileEvent-->aeEventLoop+aeFileProc
+    - InitServerLast
+      - bioInit 创建线程??+initThreadedIO
 ### 20221124
 - C function
   - memcpy(dest.source,len)
