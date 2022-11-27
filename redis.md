@@ -1,3 +1,23 @@
+### 20221127
+- epoll 多路复用
+  - 传统是遍历所有的连接，将fd集合拷贝到内核中，开销大，且支持的文件描述数量小只有1024个
+  - epoll 维持fd列表，一直在内核
+    - epoll不再是一个单独的系统调用，而是由epoll_create/epoll_ctl/epoll_wait三个系统调用组成。​ epoll通过在Linux内核中申请一个简易的文件系统(文件系统一般用什么数据结构实现？B+树), 将调用分成了3部分。
+      - create : create root of b+ tree and defined it as epoll handler,linux will define double-link structure add record callback events.
+      - ctl :add alive socket to the tree
+      - wait :find alive event by the double-link 
+    - 所有添加到epoll中的事件都会与设备(网卡)驱动程序建立回调关系，也就是说，当相应的事件发生时会调用这个回调方法,从而实现多路复用。
+  - 
+- redis 事件机制
+  - IO 事件
+    - 可读事件、可写事件和屏障事件(反转事件)
+  - time 事件
+    - 如serverCron 函数中会以 1 秒 1 次的频率，检查 AOF 文件是否有写错误。如果有的话，serverCron 就会调用 flushAppendOnlyFile 函数，再次刷回 AOF 文件的缓存数据
+- redis 事件
+  - 封装系统epoll 时间为aeCreateEventLoop
+  - 所有网络 IO 事件对应文件描述符的掩码，初始化为 AE_NONE，表示暂时不对任何事件进行监听
+  - 要监听的文件描述符 fd 在数组中的类型不是 AE_NONE，则表明该描述符已做过设置，那么操作类型就是修改操作
+  - 
 ### 20221125 
 - Makefile 
   - 规则
