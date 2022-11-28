@@ -2,17 +2,65 @@
 #include <string.h>
 #include "lib.h"
 #include "malloc.h"
+#include <stdio.h>
+#include <sys/select.h>
+#include<unistd.h>
 
 #define add 7*5
-
+typedef void (*eventhandler)();
 int value1=22;
 static int s_value3=33;
 extern int test_external;
 extern void dosth2();
 extern void simple_sort();
+static int EVENT =0;
+
+
+static void sleep_ms(unsigned int secs)
+{
+    struct timeval tval;
+
+    tval.tv_sec=secs/1000;
+
+    tval.tv_usec=(secs*1000)%1000000;
+
+    select(0,NULL,NULL,NULL,&tval);
+}
+
+void doevent()
+{
+    printf("Event on");
+    // sleep(1);
+    sleep_ms(40);
+    printf("Event off");
+
+}
+static eventhandler EventsManger[16]={NULL,NULL,NULL,doevent};
 
 
 
+int get_eventid()
+{
+    return 3;
+    // if(!EVENT)return -1;
+    // return ;
+
+}
+void pevent_main()
+{
+    int k[1];
+    eventhandler func;
+    int event_id;
+    while(1)
+    {
+        event_id=get_eventid();
+        func =EventsManger[event_id];
+        if(func!=NULL)
+            func();
+    // sleep_ms(40);
+        
+    }
+}
 
 // 变量初始化的问题
 void fun(int *px,int *py)
@@ -37,6 +85,9 @@ void fun(int *px,int *py)
 }
 int main()
 {
+    // test event
+    pevent_main();
+
     //test variabel 
     // static int  s_value=2;
     // auto float a_value1=3.6;
