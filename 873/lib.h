@@ -21,3 +21,6 @@ struct  book
 
 
 void dosth();
+void cal_percentages_2012();
+void printf_flower();
+void printf_compare_strs(char* p[],int len);

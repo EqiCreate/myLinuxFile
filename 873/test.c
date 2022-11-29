@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "lib.h"
+#include "algorithm.h"
+#include "matrix.h"
 #include "malloc.h"
 #include <stdio.h>
 #include <sys/select.h>
@@ -86,7 +88,7 @@ void fun(int *px,int *py)
 int main()
 {
     // test event
-    pevent_main();
+    // pevent_main();
 
     //test variabel 
     // static int  s_value=2;
@@ -185,10 +187,33 @@ int main()
     //    printf("%-06d \n",M);
     // }
     
-    int (*array[2])[3];
-    int (*p)[10];
-    printf("sizeof array=%d sizeof p =%d ,sizeof array[0] =%d \n", sizeof(array),sizeof(p),sizeof(array[0]));
+    // int (*array[2])[3];
+    // int (*p)[10];
+    // printf("sizeof array=%d sizeof p =%d ,sizeof array[0] =%d \n", sizeof(array),sizeof(p),sizeof(array[0]));
+
+    //test algrorithm
+    // int array[]={1,0,3,2,6,4,3,5,8,11,1};
+    // int len =sizeof(array)/sizeof(int);
+    // int * res;
+    // res=sort_by_directinsert(array,len);
+    // // res=sort_by_simpleselect(array,len);
+    // // res=sort_by_bubble(array,len);
+    // float a[3][3]={1,2,3,4,5};
+    // float b[3][3]={1,2,3,4,5};
+    // //test array[][]
+    // printf_matrix(a,b,3);
+    // Mnode nodes[3][3];
+    // nodes[0][0].id=100;
+    // nodes[0][1].id=101;
+    // nodes[1][0].id=200;
+    // printf_matrix_nodes(nodes,3);
     
+    //test 2012
+    // cal_percentages_2012();
+    // printf_flower();
+    char*s1="a12",*s2="113",*s3="111",*s4="aa";
+    char * strs[]={s1,s2,s3,s4};
+    printf_compare_strs(strs,sizeof(strs)/sizeof(char*)) ;
     return 0;
 }
 
