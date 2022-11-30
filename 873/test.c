@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <string.h>
 #include "lib.h"
 #include "algorithm.h"
 #include "matrix.h"
@@ -7,6 +6,7 @@
 #include <stdio.h>
 #include <sys/select.h>
 #include<unistd.h>
+#include "string.h"
 
 #define add 7*5
 typedef void (*eventhandler)();
@@ -193,14 +193,34 @@ int main()
 
     //test algrorithm
     // int array[]={1,0,3,2,6,4,3,5,8,11,1};
+    // int input_dicemal;
+    // int index=0;
+    // int array[5]={0};
+    // // int len =sizeof(array);
+    // int len =sizeof(array)/sizeof(int);
+
+    // while(1)
+    // {
+    //     if(index>=len)
+    //         break;
+        
+    //     if(scanf("%d",&input_dicemal)!= EOF)
+    //     {
+    //         array[index]=input_dicemal;
+    //         index++;
+    //     }
+    // }
+
     // int len =sizeof(array)/sizeof(int);
     // int * res;
     // res=sort_by_directinsert(array,len);
-    // // res=sort_by_simpleselect(array,len);
-    // // res=sort_by_bubble(array,len);
+    // res=sort_by_simpleselect(array,len);
+    // res=sort_by_bubble(array,len);
+    // printf_array(array,len);
+
+    //test array[][]
     // float a[3][3]={1,2,3,4,5};
     // float b[3][3]={1,2,3,4,5};
-    // //test array[][]
     // printf_matrix(a,b,3);
     // Mnode nodes[3][3];
     // nodes[0][0].id=100;
@@ -211,9 +231,53 @@ int main()
     //test 2012
     // cal_percentages_2012();
     // printf_flower();
-    char*s1="a12",*s2="113",*s3="111",*s4="aa";
-    char * strs[]={s1,s2,s3,s4};
-    printf_compare_strs(strs,sizeof(strs)/sizeof(char*)) ;
+    // char*s1="a12",*s2="113",*s3="111",*s4="aa";
+    // char * strs[]={s1,s2,s3,s4};
+    // printf_compare_strs(strs,sizeof(strs)/sizeof(char*)) ;
+    // int array[]={2,4,6,8};
+    // printf_different_value_by_array(array,sizeof(array)/sizeof(array[0]),3);
+    // char * str,*output;
+    // char * str =(char*)malloc(sizeof(char));
+    // //  char str[100]={0};
+    // char output[100]={0};
+    // scanf("%s",str);
+    // // output =malloc(sizeof(str));
+    // inverse(str,output,strlen(str));
+    // printf("%s\n",output);
+    // free(str);
+
+    //test 2016
+    // cal_percentages_2016();
+    // char str1[100]={0};
+    // gets(str1);
+    // int len =strlen(str1);
+    // // sort_by_bubble_with_chars(str1,100);
+    // printf("the char need to be delete ");
+    // char target=getchar();
+    // delete_char_in_array(str1,len,target);
+    // printf("%s",str1);
+    
+    // sell_watermellon(1020 );
+
+    // float array[3][3]={0};
+    // for (int i = 0; i < 3; i++)
+    // {
+    //     for (int j = 0; j < 3; j++)
+    //     {
+    //         scanf("%f", &array[i][j]);
+    //     }
+    // }
+    // int sumA=0,sumB=0;
+    // for (int i = 0; i < 3; i++)
+    // {
+    //     sumA+=array[i][i];
+    //     sumB+=array[2-i][i];
+    // }
+    // printf("man = %d,vice=%d \n",sumA,sumB);
+    int n=0;
+    scanf("%d",&n);
+    game_5_quite(n);
+
     return 0;
 }
 

@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "lib.h"
 #include <math.h>
-
+#include "string.h"
 static int test_external;
 void dosth ()
 {
@@ -55,6 +55,7 @@ void cal_percentages_2012()
     printf("%.2f\n",total);
 
 }
+
 void printf_flower()
 {
     char b=0,s=0,g=0;
@@ -87,4 +88,152 @@ void printf_compare_strs(char* p[],int len)
     {
         printf("%s \n",*(p+i));
     }
+}
+
+void printf_array(int * array,int len)
+{
+    printf("start output array");
+    for (int i = 0; i < len; i++)
+    {
+        printf("%d\n",*(array+i));
+    }
+}
+
+void printf_different_value_by_array(int *array,int len,int required_len)
+{
+     int temp=0;
+     int total=0;
+    for (int i = 0; i < len; i++)
+    {
+        for (int j = 0; j < len; j++)
+        {
+            if(j==i)continue;
+            for (int k = 0; k < len ; k++)
+            {
+                if(k==j)continue;
+                if(k==i)continue;
+                temp= *(array+i) *100 + *(array+j) *10+*(array+k) ;
+                printf("%d\t",temp);
+                total++;
+            }
+            
+        }
+    }
+    printf("total = %d \n",total);
+}
+
+void printf_array_with_3_dicemal(int * array)
+{
+    int temp=0;
+    for (int i = 0; i < 3; i++)
+    {
+        for (int j = 0; j < 3; j++)
+        {
+            if(j==i)continue;
+            for (int k = 0; k < 3 ; k++)
+            {
+                if(k==j || k==i)continue;
+                temp= *(array+i) *100 + *(array+j) *10+*(array+k) ;
+                printf("%d\n",temp);
+            }
+            
+        }
+        
+    }
+}
+
+void inverse(char * str,char * output,int len)
+{
+    for (int i = 0; i < len; i++)
+    {
+        *(output+i) = *(str-i+len-1);
+    }
+    
+}
+void cal_percentages_2016()
+{
+    float total=0,temp=0;
+    int child=1;
+    for (int i = 0; i < 20; i++)
+    {
+      total+= (float)1/child;
+      if(i%2==0){
+        child= 2*i +1;
+      }
+      else{
+        child= 0-(2*i +1);
+      }
+    }
+    printf("%.2f\n",total);
+
+}
+
+void delete_char_in_array(char *array,int len,char need_tobe_del)
+{
+    int temp_index=0;
+    int timer=1;
+    for (int i = 0; i < len; i++)
+    {
+        if(*(array+i) == need_tobe_del )
+        {
+            temp_index=i;
+            
+           while (temp_index<len-1)
+           {
+                if(array[temp_index+timer]!=need_tobe_del){
+                    array[temp_index]=array[temp_index+timer];
+                    temp_index++;
+                }
+                else{
+                    timer++;
+                }
+           }
+        }
+    }
+}  
+void sell_watermellon(int total)
+{
+    int days=0;
+    while (total >0)
+    {
+        total =total/2-2;
+        days++;
+    }
+    printf("days=%d \n",days);
+}
+void game_5_quite(int n)
+{
+    int left_people=n;
+    int arr[n];
+    int exchange_timer=5;
+    int index=0;
+    int order=1;
+    memset(arr,0,n);
+    while(left_people!=1)
+    {
+        if(index>=n)
+        {
+            index=0;
+        }
+        if(order%5==0){
+            arr[index]=1;
+            left_people--;
+        }
+        index++;
+        while(arr[index]==1){
+            index++;
+            if(index>=n)
+            {
+                index=0;
+            }
+        }
+        order++;
+    }
+    for (int i = 0; i < n; i++)
+    {
+        if(arr[i]==0)
+            printf("the orgin no is %d\n",i+1);
+    }
+    
+    
 }

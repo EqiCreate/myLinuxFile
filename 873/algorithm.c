@@ -73,4 +73,29 @@ int* sort_by_bubble(int *array,int len)
     }
 }  
 
+// 冒泡优化
+void sort_by_bubble_with_chars(char *array,int len)
+{
+    int temp=0;
+    int index=0;
+    int flag=0;
+    for (int i = len-1; i >0; i--)
+    {
+        flag=1;
+        for (int j = 1; j <= i; j++)
+        {
+            if(array[j] < array[j-1])
+            {
+                temp=array[j];
+                array[j]=array[j-1];
+                array[j-1]=temp;
+                flag=0;
+            }
+        }
+
+        if(flag==1)
+            break;
+    }
+}  
+
 
