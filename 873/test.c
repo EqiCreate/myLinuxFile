@@ -274,10 +274,25 @@ int main()
     //     sumB+=array[2-i][i];
     // }
     // printf("man = %d,vice=%d \n",sumA,sumB);
-    int n=0;
-    scanf("%d",&n);
-    game_5_quite(n);
-
+    // int n=0;
+    // scanf("%d",&n);
+    // game_5_quite(n);
+    char * input,arr[40][40]={""};
+    input= (char*)malloc(sizeof(char));
+    gets(input);
+    int len =strlen(input);
+    char *substr = strtok(input," ");
+    int timer=0;
+    while (substr!=NULL)
+    {
+        strcpy(arr[timer],substr);
+        timer++;
+        substr=strtok(NULL," ");
+    }
+    
+    
+    create_numbers_list((char*)arr);
+    free(input);
     return 0;
 }
 

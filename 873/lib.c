@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "lib.h"
 #include <math.h>
+#include "malloc.h"
 #include "string.h"
 static int test_external;
 void dosth ()
@@ -234,6 +235,43 @@ void game_5_quite(int n)
         if(arr[i]==0)
             printf("the orgin no is %d\n",i+1);
     }
+}
+
+struct Number * create_numbers_list(char * a)
+{
+   struct Number *list,*head,*p,*q;
+   list= malloc(sizeof(struct Number));
+    int i=0;
+   p=malloc(sizeof(struct Number));
+    p->c=a[i++];
+    if(p->c!=0)
+    {
+        head=malloc(sizeof(struct Number));
+        list->next=head;
+        head->next=p;
+    }
+    else{
+        head=NULL;
+        list->next=head;
+        return list;
+    }
     
-    
+   while(p->c!=0)
+   {
+        if(a[i]!=0)
+        {
+            q=malloc(sizeof(struct Number));
+            q->c=a[i];
+            p->next=q;
+            p=q;
+            i++;
+        }
+        else
+        {
+            break;
+        }
+   }
+   p->next=NULL;
+   return list;
+
 }

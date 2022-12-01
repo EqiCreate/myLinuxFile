@@ -32,4 +32,6 @@ void cal_percentages_2016();
 void delete_char_in_array(char *array,int len,char need_tobe_del);
 void sell_watermellon(int total);
 void game_5_quite(int n);
-
+struct Number{int c; struct Number *next;};
+struct Number * create_numbers_list(char * a);
+ 
