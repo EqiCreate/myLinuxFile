@@ -87,6 +87,36 @@ void fun(int *px,int *py)
 }
 int main()
 {
+    //test ref & pointer
+    // int a=1,b=2;
+    // swap_by_pointer(&a,&b);
+    // printf("'");
+    //test strlen and scanf
+    char str[]="123456";
+    char str_n[]="123";
+    char *str_p="123";
+    printf("%d\n",sizeof(str_p));
+
+    printf("%d\n",sizeof(str_n));
+    
+    printf("%d\n",strlen(str));
+    // int aaaa,*p=&aaaa;
+    // scanf("%d",p);
+    int aa;char b=0;float c=0;char * s;char ss[20];
+    s=(char*)malloc(sizeof(char));
+    // // scanf("%d,%f,%c",&aa,&c,&b);
+    // // scanf("%d%s%f",&aa,s,&c);
+    scanf("%s",s);
+    int len=sizeof(s);
+    // scanf("%s",ss);
+    // int len_ss=strlen(ss);
+    // char * str="hello";
+    // int len_str=sizeof(str);
+    // printf("1");
+    // char aaa[]="hello";
+    // printf("%d",strlen(aaa));
+    // int M =0;int n=0;
+    // (M)?(n++):(n--);
     // test event
     // pevent_main();
 
@@ -251,8 +281,8 @@ int main()
     // char str1[100]={0};
     // gets(str1);
     // int len =strlen(str1);
-    // // sort_by_bubble_with_chars(str1,100);
-    // printf("the char need to be delete ");
+    // // // sort_by_bubble_with_chars(str1,100);
+    // // printf("the char need to be delete ");
     // char target=getchar();
     // delete_char_in_array(str1,len,target);
     // printf("%s",str1);
@@ -277,22 +307,22 @@ int main()
     // int n=0;
     // scanf("%d",&n);
     // game_5_quite(n);
-    char * input,arr[40][40]={""};
-    input= (char*)malloc(sizeof(char));
-    gets(input);
-    int len =strlen(input);
-    char *substr = strtok(input," ");
-    int timer=0;
-    while (substr!=NULL)
-    {
-        strcpy(arr[timer],substr);
-        timer++;
-        substr=strtok(NULL," ");
-    }
+    // char * input,arr[40][40]={""};
+    // input= (char*)malloc(sizeof(char));
+    // gets(input);
+    // int len =strlen(input);
+    // char *substr = strtok(input," ");
+    // int timer=0;
+    // while (substr!=NULL)
+    // {
+    //     strcpy(arr[timer],substr);
+    //     timer++;
+    //     substr=strtok(NULL," ");
+    // }
     
     
-    create_numbers_list((char*)arr);
-    free(input);
+    // create_numbers_list((char*)arr);
+    // free(input);
     return 0;
 }
 

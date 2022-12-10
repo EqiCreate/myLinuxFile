@@ -34,4 +34,6 @@ void sell_watermellon(int total);
 void game_5_quite(int n);
 struct Number{int c; struct Number *next;};
 struct Number * create_numbers_list(char * a);
+void swap_by_pointer(int * x,int *y);
+// void swapref(int &x,int&y);
  

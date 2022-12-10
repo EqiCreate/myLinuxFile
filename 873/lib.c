@@ -171,27 +171,43 @@ void cal_percentages_2016()
 
 void delete_char_in_array(char *array,int len,char need_tobe_del)
 {
-    int temp_index=0;
-    int timer=1;
-    for (int i = 0; i < len; i++)
-    {
-        if(*(array+i) == need_tobe_del )
-        {
-            temp_index=i;
+    // int temp_index=0;
+    // int timer=1;
+    // for (int i = 0; i < len; i++)
+    // {
+    //     if(*(array+i) == need_tobe_del )
+    //     {
+    //         temp_index=i;
             
-           while (temp_index<len-1)
-           {
-                if(array[temp_index+timer]!=need_tobe_del){
-                    array[temp_index]=array[temp_index+timer];
-                    temp_index++;
-                }
-                else{
-                    timer++;
-                }
-           }
+    //        while (temp_index<len-1)
+    //        {
+    //             if(array[temp_index+timer]!=need_tobe_del){
+    //                 array[temp_index]=array[temp_index+timer];
+    //                 temp_index++;
+    //             }
+    //             else{
+    //                 timer++;
+    //             }
+    //        }
+    //     }
+    // }
+
+    int i=0,j=0;
+    while(array[i]=array[j])
+    {
+        if(array[j]== need_tobe_del)
+        {
+
         }
+        else
+        {
+            i++;
+        }
+        j++;
     }
 }  
+
+
 void sell_watermellon(int total)
 {
     int days=0;
@@ -275,3 +291,15 @@ struct Number * create_numbers_list(char * a)
    return list;
 
 }
+
+void swap_by_pointer(int * x,int *y)
+{
+    int * temp;
+    temp=x;
+    x=y;
+    y=temp;
+}
+// void swapref(int &x,int&y)
+// {
+
+// }
