@@ -92,22 +92,22 @@ int main()
     // swap_by_pointer(&a,&b);
     // printf("'");
     //test strlen and scanf
-    char str[]="123456";
-    char str_n[]="123";
-    char *str_p="123";
-    printf("%d\n",sizeof(str_p));
+    // char str[]="123456";
+    // char str_n[]="123";
+    // char *str_p="123";
+    // printf("%d\n",sizeof(str_p));
 
-    printf("%d\n",sizeof(str_n));
+    // printf("%d\n",sizeof(str_n));
     
-    printf("%d\n",strlen(str));
-    // int aaaa,*p=&aaaa;
-    // scanf("%d",p);
-    int aa;char b=0;float c=0;char * s;char ss[20];
-    s=(char*)malloc(sizeof(char));
+    // printf("%d\n",strlen(str));
+    // // int aaaa,*p=&aaaa;
+    // // scanf("%d",p);
+    // int aa;char b=0;float c=0;char * s;char ss[20];
+    // s=(char*)malloc(sizeof(char));
     // // scanf("%d,%f,%c",&aa,&c,&b);
     // // scanf("%d%s%f",&aa,s,&c);
-    scanf("%s",s);
-    int len=sizeof(s);
+    // scanf("%s",s);
+    // int len=sizeof(s);
     // scanf("%s",ss);
     // int len_ss=strlen(ss);
     // char * str="hello";
@@ -323,6 +323,10 @@ int main()
     
     // create_numbers_list((char*)arr);
     // free(input);
+    int x,a,b;
+    a=012;
+    b=(a--);
+    // x=(a=3,b=a--);
     return 0;
 }
 
