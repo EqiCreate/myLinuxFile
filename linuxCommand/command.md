@@ -1,3 +1,13 @@
+### 20221226
+- 多次循环执行命令
+  - 如 执行50次循环的sensor : for i in {1..50}; do sensors;sleep 2;done
+- 开机启动的设置
+  - sudo systemctl disable mysql // 设置开机启动
+  - systemctl is-enabled mysql //判断是否开机启动
+  - service --status-all // 查询当前所有的任务 ，不断是否已经stop
+- 命令行是程序shell 放在系统变量下(ENV | grep PATH) 的，类似git 命令都可以在/usr/bin 中找到程序
+
+
 ### 20221128
 - grep
   - .* 匹配所有

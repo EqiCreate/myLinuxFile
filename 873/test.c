@@ -323,10 +323,17 @@ int main()
     
     // create_numbers_list((char*)arr);
     // free(input);
-    int x,a,b;
-    a=012;
-    b=(a--);
+    // int x,a,b;
+    // a=012;
+    // b=(a--);
     // x=(a=3,b=a--);
+
+    int p [10]={};
+    int * pp[10]={};
+    printf("sizeof array =%d",sizeof(p));
+    printf("sizeof pointer =%d",sizeof(pp));
+
+
     return 0;
 }
 

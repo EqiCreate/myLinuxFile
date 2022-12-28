@@ -13,3 +13,12 @@
 + ## vscode
     + <mark> proxy set for http & https
     + cappsettings.json --ip</mark>
+
+{
+        "server":"服务器ip地址",
+        "server_port":12345,
+        "local_port":1080,
+        "password":"12345",
+        "timeout":600,
+        "method":"aes-256-cfb"
+}
