@@ -1,3 +1,18 @@
+### 20230114
+- for (uint_fast8_t i = 0x01; i & 0xff; i <<= 1) {} : 根据位数迭代
+- 位重置
+  ```C
+  static inline uint_fast64_t crc_reflect(uint_fast64_t data, size_t data_len) {
+    uint_fast64_t ret = data & 0x01;
+
+    for (size_t i = 1; i < data_len; i++) {
+        data >>= 1;
+        ret = (ret << 1) | (data & 0x01); //ret 左移,数据右移，或起来
+    }
+
+    return ret;
+  }
+  ```
 ### 20230113
 - h文件，实际上只是编译器复制粘贴一些函数等说明，方便编译器进行检查，实际上的函数实现链接器会从.o文件中寻找，如果重名还会报错
 ### 20230111 

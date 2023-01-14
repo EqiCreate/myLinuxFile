@@ -3,10 +3,22 @@
 
 #include "config.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <syslog.h>
+#include <time.h>
 
+#include "zmalloc.h" /* total memory usage aware version of malloc/free */
+#include "crc64.h"
+
+/* Log levels */
+#define LL_DEBUG 0
+#define LL_VERBOSE 1
+#define LL_NOTICE 2
+#define LL_WARNING 3
+#define LL_RAW (1<<10) /* Modifier to log without timestamp */
 struct redisServer {
     /* General */
-    // pid_t pid;                  /* Main process pid. */
+    pid_t pid;                  /* Main process pid. */
     // pthread_t main_thread_id;         /* Main thread id */
     char *configfile;           /* Absolute config file path, or NULL */
     char *executable;           /* Absolute executable file path. */
@@ -34,7 +46,7 @@ struct redisServer {
     // int arch_bits;              /* 32 or 64 depending on sizeof(long) */
     // int cronloops;              /* Number of times the cron function run */
     // char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
-    // int sentinel_mode;          /* True if this instance is a Sentinel. */
+    int sentinel_mode;          /* True if this instance is a Sentinel. */
     // size_t initial_memory_usage; /* Bytes used after initialization. */
     // int always_show_logo;       /* Show logo even for non-stdout logging. */
     // int in_exec;                /* Are we inside EXEC? */
@@ -174,7 +186,7 @@ struct redisServer {
     // long long stat_reply_buffer_expands; /* Total number of output buffer expands */
 
     // /* Configuration */
-    // int verbosity;                  /* Loglevel in redis.conf */
+    int verbosity;                  /* Loglevel in redis.conf */
     // int maxidletime;                /* Client timeout in seconds */
     // int tcpkeepalive;               /* Set SO_KEEPALIVE if non-zero. */
     // int active_expire_enabled;      /* Can be disabled for testing purposes. */
@@ -280,8 +292,8 @@ struct redisServer {
     // redisOpArray also_propagate;    /* Additional command to propagate. */
     // int replication_allowed;        /* Are we allowed to replicate? */
     // /* Logging */
-    // char *logfile;                  /* Path of log file */
-    // int syslog_enabled;             /* Is syslog enabled? */
+    char *logfile;                  /* Path of log file */
+    int syslog_enabled;             /* Is syslog enabled? */
     // char *syslog_ident;             /* Syslog ident */
     // int syslog_facility;            /* Syslog facility */
     // int crashlog_enabled;           /* Enable signal handler for crashlog.
@@ -322,7 +334,7 @@ struct redisServer {
     // /* Replication (slave) */
     // char *masteruser;               /* AUTH with this user and masterauth with master */
     // sds masterauth;                 /* AUTH with this password with master */
-    // char *masterhost;               /* Hostname of master */
+    char *masterhost;               /* Hostname of master */
     // int masterport;                 /* Port of master */
     // int repl_timeout;               /* Timeout after N seconds of master idle */
     // client *master;     /* Client that is master for this slave */
@@ -402,8 +414,8 @@ struct redisServer {
     // int list_compress_depth;
     // /* time cache */
     // redisAtomic time_t unixtime; /* Unix time sampled every cron cycle. */
-    // time_t timezone;            /* Cached timezone. As set by tzset(). */
-    // int daylight_active;        /* Currently in daylight saving time. */
+    time_t timezone;            /* Cached timezone. As set by tzset(). */
+    int daylight_active;        /* Currently in daylight saving time. */
     // mstime_t mstime;            /* 'unixtime' in milliseconds. */
     // ustime_t ustime;            /* 'unixtime' in microseconds. */
     // size_t blocking_op_nesting; /* Nesting level of blocking operation, used to reset blocked_last_cron. */
@@ -497,5 +509,23 @@ struct redisServer {
     // /* Local environment */
     // char *locale_collate;
 };
+
+/* Global vars */
+struct redisServer server; /* Server global state */
+
+#ifdef __GNUC__
+void _serverLog(int level, const char *fmt, ...)
+    __attribute__((format(printf, 2, 3)));
+#else
+void _serverLog(int level, const char *fmt, ...);
+#endif
+
+/* Use macro for checking log level to avoid evaluating arguments in cases log
+ * should be ignored due to low level. */
+#define serverLog(level, ...) do {\
+        if (((level)&0xff) < server.verbosity) break;\
+        printf("serverLog");\
+        _serverLog(level, __VA_ARGS__);\
+    } while(0)
 
 #endif

@@ -4,6 +4,8 @@
         "solarisfixes.h": "c",
         "syslog.h": "c",
         "config.h": "c",
-        "fcntl.h": "c"
-    }
+        "fcntl.h": "c",
+        "atomicvar.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
 }
