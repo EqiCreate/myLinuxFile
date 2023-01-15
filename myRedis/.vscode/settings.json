@@ -5,7 +5,23 @@
         "syslog.h": "c",
         "config.h": "c",
         "fcntl.h": "c",
-        "atomicvar.h": "c"
+        "atomicvar.h": "c",
+        "fmacros.h": "c",
+        "stddef.h": "c",
+        "sds.h": "c",
+        "zmalloc.h": "c",
+        "jemalloc.h": "c",
+        "features.h": "c",
+        "server.h": "c",
+        "types.h": "c",
+        "endian.h": "c",
+        "dict.h": "c",
+        "adlist.h": "c",
+        "connection.h": "c",
+        "redismodule.h": "c",
+        "rdb.h": "c",
+        "fpconv_dtoa.h": "c",
+        "sha256.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

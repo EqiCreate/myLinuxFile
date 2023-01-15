@@ -62,7 +62,7 @@
 #define MATRIX_A 0xB5026F5AA96619E9ULL
 #define UM 0xFFFFFFFF80000000ULL /* Most significant 33 bits */
 #define LM 0x7FFFFFFFULL /* Least significant 31 bits */
-
+#define TT 0x11
 
 /* The array for the state vector */
 static unsigned long long mt[NN];

@@ -1,3 +1,7 @@
+### 20230115
+- gcc -I 可以将自定义的头文件加入标准类库中，之后include 直接可以用<>包裹
+-  #include "fpconv_dtoa.h"  ??????
+-  #include <stddef.h>	/* NULL size_t */???? 在cluster.c 关于staic_extern?
 ### 20230114
 - for (uint_fast8_t i = 0x01; i & 0xff; i <<= 1) {} : 根据位数迭代
 - 位重置
