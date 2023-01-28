@@ -8,6 +8,135 @@
 #include "Main/mt19937-64.h"
 // #include "functions.h"
 
+/* Returns 1 if there is --sentinel among the arguments or if
+ * executable name contains "redis-sentinel". */
+int checkForSentinelMode(int argc, char **argv, char *exec_name) {
+    if (strstr(exec_name,"redis-sentinel") != NULL) return 1;
+
+    for (int j = 1; j < argc; j++)
+        if (!strcmp(argv[j],"--sentinel")) return 1;
+    return 0;
+}
+
+void initServerConfig(void) {
+    int j;
+    char *default_bindaddr[CONFIG_DEFAULT_BINDADDR_COUNT] = CONFIG_DEFAULT_BINDADDR;
+
+    initConfigValues();
+    // updateCachedTime(1);
+    // getRandomHexChars(server.runid,CONFIG_RUN_ID_SIZE);
+    // server.runid[CONFIG_RUN_ID_SIZE] = '\0';
+    // changeReplicationId();
+    // clearReplicationId2();
+    server.hz = CONFIG_DEFAULT_HZ; /* Initialize it ASAP, even if it may get
+                                      updated later after loading the config.
+                                      This value may be used before the server
+                                      is initialized. */
+    server.timezone = getTimeZone(); /* Initialized by tzset(). */
+    server.configfile = NULL;
+    server.executable = NULL;
+    server.arch_bits = (sizeof(long) == 8) ? 64 : 32;
+    server.bindaddr_count = CONFIG_DEFAULT_BINDADDR_COUNT;
+    for (j = 0; j < CONFIG_DEFAULT_BINDADDR_COUNT; j++)
+        server.bindaddr[j] = zstrdup(default_bindaddr[j]);
+    // memset(server.listeners, 0x00, sizeof(server.listeners));
+    // server.active_expire_enabled = 1;
+    // server.skip_checksum_validation = 0;
+    // server.loading = 0;
+    // server.async_loading = 0;
+    // server.loading_rdb_used_mem = 0;
+    // server.aof_state = AOF_OFF;
+    // server.aof_rewrite_base_size = 0;
+    // server.aof_rewrite_scheduled = 0;
+    // server.aof_flush_sleep = 0;
+    // server.aof_last_fsync = time(NULL);
+    // server.aof_cur_timestamp = 0;
+    // atomicSet(server.aof_bio_fsync_status,C_OK);
+    // server.aof_rewrite_time_last = -1;
+    // server.aof_rewrite_time_start = -1;
+    // server.aof_lastbgrewrite_status = C_OK;
+    // server.aof_delayed_fsync = 0;
+    // server.aof_fd = -1;
+    // server.aof_selected_db = -1; /* Make sure the first time will not match */
+    // server.aof_flush_postponed_start = 0;
+    // server.aof_last_incr_size = 0;
+    // server.active_defrag_running = 0;
+    // server.notify_keyspace_events = 0;
+    // server.blocked_clients = 0;
+    // memset(server.blocked_clients_by_type,0,
+    //        sizeof(server.blocked_clients_by_type));
+    // server.shutdown_asap = 0;
+    // server.shutdown_flags = 0;
+    // server.shutdown_mstime = 0;
+    // server.cluster_module_flags = CLUSTER_MODULE_FLAG_NONE;
+    // server.migrate_cached_sockets = dictCreate(&migrateCacheDictType);
+    // server.next_client_id = 1; /* Client IDs, start from 1 .*/
+    // server.page_size = sysconf(_SC_PAGESIZE);
+    // server.pause_cron = 0;
+
+    // server.latency_tracking_info_percentiles_len = 3;
+    // server.latency_tracking_info_percentiles = zmalloc(sizeof(double)*(server.latency_tracking_info_percentiles_len));
+    // server.latency_tracking_info_percentiles[0] = 50.0;  /* p50 */
+    // server.latency_tracking_info_percentiles[1] = 99.0;  /* p99 */
+    // server.latency_tracking_info_percentiles[2] = 99.9;  /* p999 */
+
+    // unsigned int lruclock = getLRUClock();
+    // atomicSet(server.lruclock,lruclock);
+    // resetServerSaveParams();
+
+    // appendServerSaveParams(60*60,1);  /* save after 1 hour and 1 change */
+    // appendServerSaveParams(300,100);  /* save after 5 minutes and 100 changes */
+    // appendServerSaveParams(60,10000); /* save after 1 minute and 10000 changes */
+
+    // /* Replication related */
+    // server.masterhost = NULL;
+    // server.masterport = 6379;
+    // server.master = NULL;
+    // server.cached_master = NULL;
+    // server.master_initial_offset = -1;
+    // server.repl_state = REPL_STATE_NONE;
+    // server.repl_transfer_tmpfile = NULL;
+    // server.repl_transfer_fd = -1;
+    // server.repl_transfer_s = NULL;
+    // server.repl_syncio_timeout = CONFIG_REPL_SYNCIO_TIMEOUT;
+    // server.repl_down_since = 0; /* Never connected, repl is down since EVER. */
+    // server.master_repl_offset = 0;
+
+    // /* Replication partial resync backlog */
+    // server.repl_backlog = NULL;
+    // server.repl_no_slaves_since = time(NULL);
+
+    // /* Failover related */
+    // server.failover_end_time = 0;
+    // server.force_failover = 0;
+    // server.target_replica_host = NULL;
+    // server.target_replica_port = 0;
+    // server.failover_state = NO_FAILOVER;
+
+    // /* Client output buffer limits */
+    // for (j = 0; j < CLIENT_TYPE_OBUF_COUNT; j++)
+    //     server.client_obuf_limits[j] = clientBufferLimitsDefaults[j];
+
+    // /* Linux OOM Score config */
+    // for (j = 0; j < CONFIG_OOM_COUNT; j++)
+    //     server.oom_score_adj_values[j] = configOOMScoreAdjValuesDefaults[j];
+
+    // /* Double constants initialization */
+    // R_Zero = 0.0;
+    // R_PosInf = 1.0/R_Zero;
+    // R_NegInf = -1.0/R_Zero;
+    // R_Nan = R_Zero/R_Zero;
+
+    // /* Command table -- we initialize it here as it is part of the
+    //  * initial configuration, since command names may be changed via
+    //  * redis.conf using the rename-command directive. */
+    // server.commands = dictCreate(&commandTableDictType);
+    // server.orig_commands = dictCreate(&commandTableDictType);
+    // populateCommandTable();
+
+    // /* Debugging */
+    // server.watchdog_period = 0;
+}
 
 /* Our shared "common" objects */
 
@@ -17,9 +146,18 @@
 //     return dictGenHashFunction((unsigned char*)key, sdslen((char*)key));
 // }
 
-// uint64_t dictSdsCaseHash(const void *key) {
-//     return dictGenCaseHashFunction((unsigned char*)key, sdslen((char*)key));
-// }
+uint64_t dictSdsCaseHash(const void *key) {
+    return dictGenCaseHashFunction((unsigned char*)key, sdslen((char*)key));
+}
+dictType sdsHashDictType = {
+    dictSdsCaseHash,            /* hash function */
+    NULL,                       /* key dup */
+    NULL,                       /* val dup */
+    NULL,      /* key compare */
+    NULL,          /* key destructor */
+    NULL,            /* val destructor */
+    NULL                        /* allow to expand */
+};
 
 // /* Dict hash function for null terminated string */
 // uint64_t dictCStrHash(const void *key) {
@@ -201,4 +339,10 @@ int main(int argc, char **argv)
     umask(server.umask = umask(0777));
     uint8_t hashseed[16];
     getRandomBytes(hashseed, sizeof(hashseed));
+    dictSetHashFunctionSeed(hashseed);
+    char *exec_name = strrchr(argv[0], '/');
+    if (exec_name == NULL) exec_name = argv[0];
+    server.sentinel_mode = checkForSentinelMode(argc,argv, exec_name);
+    initServerConfig();
+
 }

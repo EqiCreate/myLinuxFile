@@ -14,7 +14,7 @@
 #include "crc64.h"
 #include "util.h"    /* Misc functions useful in many places */
 
-// #include "dict.h"    /* Hash tables */
+#include "dict.h"    /* Hash tables */
 // #include "atomicvar.h"
 // #include "sds.h"
 // #include "adlist.h"  /* Linked lists */
@@ -133,6 +133,10 @@ typedef long long ustime_t; /* microsecond time type. */
 #define CONFIG_MIN_RESERVED_FDS 32
 #define CONFIG_DEFAULT_PROC_TITLE_TEMPLATE "{title} {listen-addr} {server-mode}"
 
+/* We can print the stacktrace, so our assert is defined this way: */
+// #define serverAssertWithInfo(_c,_o,_e) ((_e)?(void)0 : (_serverAssertWithInfo(_c,_o,#_e,__FILE__,__LINE__),redis_unreachable()))
+#define serverAssert(_e) ((_e)?(void)0 : (_serverAssert(#_e,__FILE__,__LINE__),redis_unreachable()))
+// #define serverPanic(...) _serverPanic(__FILE__,__LINE__,__VA_ARGS__),redis_unreachable()
 
 /* This structure can be optionally passed to RDB save/load functions in
  * order to implement additional functionalities, by storing and loading
@@ -619,7 +623,7 @@ struct redisServer {
     // int activerehashing;        /* Incremental rehash in serverCron() */
     // int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) */
     // char *pidfile;              /* PID file path */
-    // int arch_bits;              /* 32 or 64 depending on sizeof(long) */
+    int arch_bits;              /* 32 or 64 depending on sizeof(long) */
     // int cronloops;              /* Number of times the cron function run */
     // char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
     int sentinel_mode;          /* True if this instance is a Sentinel. */
@@ -647,7 +651,7 @@ struct redisServer {
     int port;                   /* TCP listening port */
     int tls_port;               /* TLS listening port */
     // int tcp_backlog;            /* TCP listen() backlog */
-    // char *bindaddr[CONFIG_BINDADDR_MAX]; /* Addresses we should bind to */
+    char *bindaddr[CONFIG_BINDADDR_MAX]; /* Addresses we should bind to */
     int bindaddr_count;         /* Number of addresses in server.bindaddr[] */
     char *bind_source_addr;     /* Source address to bind on for outgoing connections */
     // char *unixsocket;           /* UNIX socket path */
@@ -836,7 +840,7 @@ struct redisServer {
     // int saveparamslen;              /* Number of saving points */
     // char *rdb_filename;             /* Name of RDB file */
     // int rdb_compression;            /* Use compression in RDB? */
-    // int rdb_checksum;               /* Use RDB checksum? */
+    int rdb_checksum;               /* Use RDB checksum? */
     // int rdb_del_sync_files;         /* Remove RDB files used only for SYNC if
     //                                    the instance does not use persistence. */
     // time_t lastsave;                /* Unix time of last successful save */
@@ -1184,6 +1188,8 @@ typedef enum {
 
 extern struct redisServer server;
 extern struct sharedObjectsStruct shared;
+extern dictType sdsHashDictType;
+
 
 
 /* Keys hashing / comparison functions for dict.c hash tables. */
@@ -1194,6 +1200,41 @@ uint64_t dictSdsCaseHash(const void *key);
 // void dictSdsDestructor(dict *d, void *val);
 // void dictListDestructor(dict *d, void *val);
 // void *dictSdsDup(dict *d, const void *key);
+/* Type of configuration. */
+
+/* Configuration Flags */
+#define MODIFIABLE_CONFIG 0 /* This is the implied default for a standard 
+                             * config, which is mutable. */
+#define IMMUTABLE_CONFIG (1ULL<<0) /* Can this value only be set at startup? */
+#define SENSITIVE_CONFIG (1ULL<<1) /* Does this value contain sensitive information */
+#define DEBUG_CONFIG (1ULL<<2) /* Values that are useful for debugging. */
+#define MULTI_ARG_CONFIG (1ULL<<3) /* This config receives multiple arguments. */
+#define HIDDEN_CONFIG (1ULL<<4) /* This config is hidden in `config get <pattern>` (used for tests/debugging) */
+#define PROTECTED_CONFIG (1ULL<<5) /* Becomes immutable if enable-protected-configs is enabled. */
+#define DENY_LOADING_CONFIG (1ULL<<6) /* This config is forbidden during loading. */
+#define ALIAS_CONFIG (1ULL<<7) /* For configs with multiple names, this flag is set on the alias. */
+#define MODULE_CONFIG (1ULL<<8) /* This config is a module config */
+#define VOLATILE_CONFIG (1ULL<<9) /* The config is a reference to the config data and not the config data itself (ex.
+                                   * a file name containing more configuration like a tls key). In this case we want
+                                   * to apply the configuration change even if the new config value is the same as
+                                   * the old. */
+
+#define INTEGER_CONFIG 0 /* No flags means a simple integer configuration */
+#define MEMORY_CONFIG (1<<0) /* Indicates if this value can be loaded as a memory value */
+#define PERCENT_CONFIG (1<<1) /* Indicates if this value can be loaded as a percent (and stored as a negative int) */
+#define OCTAL_CONFIG (1<<2) /* This value uses octal representation */
+
+typedef enum {
+    BOOL_CONFIG,
+    NUMERIC_CONFIG,
+    STRING_CONFIG,
+    SDS_CONFIG,
+    ENUM_CONFIG,
+    SPECIAL_CONFIG,
+} configType;
+
+void _serverAssert(const char *estr, const char *file, int line);
+
 
 #include "rdb.h"
 
