@@ -18,13 +18,14 @@
 // #include "atomicvar.h"
 // #include "sds.h"
 // #include "adlist.h"  /* Linked lists */
-// #include "ae.h"      /* Event driven programming library */
+#include "ae.h"      /* Event driven programming library */
 // #include "anet.h"    /* Networking the easy way */
 // #include "connection.h" /* Connection abstraction */
 // #include "rax.h"     /* Radix tree */
 // #include "rio.h"
 
 #include "redismodule.h"    /* Redis modules API defines. */
+#include "version.h"
 
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
@@ -100,7 +101,7 @@ typedef long long ustime_t; /* microsecond time type. */
 
 /* Error codes */
 #define C_OK                    0
-#define C_ERR   
+#define C_ERR                   -1
 
 #define REDISMODULE_CORE 1
 
@@ -132,6 +133,24 @@ typedef long long ustime_t; /* microsecond time type. */
 #define CONFIG_BINDADDR_MAX 16
 #define CONFIG_MIN_RESERVED_FDS 32
 #define CONFIG_DEFAULT_PROC_TITLE_TEMPLATE "{title} {listen-addr} {server-mode}"
+
+/* The actual Redis Object */
+#define OBJ_STRING 0    /* String object. */
+#define OBJ_LIST 1      /* List object. */
+#define OBJ_SET 2       /* Set object. */
+#define OBJ_ZSET 3      /* Sorted set object. */
+#define OBJ_HASH 4      /* Hash object. */
+
+/* Macro used to initialize a Redis object allocated on the stack.
+ * Note that this macro is taken near the structure definition to make sure
+ * we'll update it when the structure is changed, to avoid bugs like
+ * bug #85 introduced exactly in this way. */
+#define initStaticStringObject(_var,_ptr) do { \
+    _var.refcount = OBJ_STATIC_REFCOUNT; \
+    _var.type = OBJ_STRING; \
+    _var.encoding = OBJ_ENCODING_RAW; \
+    _var.ptr = _ptr; \
+} while(0)
 
 /* We can print the stacktrace, so our assert is defined this way: */
 // #define serverAssertWithInfo(_c,_o,_e) ((_e)?(void)0 : (_serverAssertWithInfo(_c,_o,#_e,__FILE__,__LINE__),redis_unreachable()))
@@ -455,7 +474,7 @@ struct redisCommand {
     int num_tips;
     int key_specs_num;
     int key_specs_max;
-    // dict *subcommands_dict; /* A dictionary that holds the subcommands, the key is the subcommand sds name
+    dict *subcommands_dict; /* A dictionary that holds the subcommands, the key is the subcommand sds name
                             //  * (not the fullname), and the value is the redisCommand structure pointer. */
     struct redisCommand *parent;
     struct RedisModuleCommand *module_cmd; /* A pointer to the module command data (NULL if native command) */
@@ -611,9 +630,9 @@ struct redisServer {
     int hz;                     /* serverCron() calls frequency in hertz */
     int in_fork_child;          /* indication that this is a fork child */
     redisDb *db;
-    // dict *commands;             /* Command table */
+    dict *commands;             /* Command table */
     // dict *orig_commands;        /* Command table before command renaming. */
-    // aeEventLoop *el;
+    aeEventLoop *el;
     // rax *errors;                /* Errors table */
     // redisAtomic unsigned int lruclock; /* Clock for LRU eviction */
     // volatile sig_atomic_t shutdown_asap; /* Shutdown ordered by signal handler. */
@@ -642,7 +661,7 @@ struct redisServer {
     // dict *moduleapi;            /* Exported core APIs dictionary for modules. */
     // dict *sharedapi;            /* Like moduleapi but containing the APIs that
     //                                modules share with each other. */
-    // dict *module_configs_queue; /* Dict that stores module configurations from .conf file until after modules are loaded during startup or arguments to loadex. */
+    dict *module_configs_queue; /* Dict that stores module configurations from .conf file until after modules are loaded during startup or arguments to loadex. */
     // list *loadmodule_queue;     /* List of modules to load at startup. */
     // int module_pipe[2];         /* Pipe used to awake the event loop by module threads. */
     // pid_t child_pid;            /* PID of current child */
@@ -1234,6 +1253,17 @@ typedef enum {
 } configType;
 
 void _serverAssert(const char *estr, const char *file, int line);
+/* acl.c -- Authentication related prototypes. */
+// extern rax *Users;
+// extern user *DefaultUser;
+void ACLInit(void);
+
+/* Core functions */
+void loadServerConfig(char *filename, char config_from_stdin, char *options);
+struct redisCommand *lookupCommandBySdsLogic(dict *commands, sds s);
+struct redisCommand *lookupCommandBySds(sds s);
+int ACLAppendUserForLoading(sds *argv, int argc, int *argc_err);
+const char *ACLSetUserStringError(void);
 
 
 #include "rdb.h"

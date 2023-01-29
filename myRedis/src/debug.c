@@ -1089,29 +1089,29 @@ void _serverAssert(const char *estr, const char *file, int line) {
 //     _serverAssert(estr,file,line);
 // }
 
-// void _serverPanic(const char *file, int line, const char *msg, ...) {
-//     va_list ap;
-//     va_start(ap,msg);
-//     char fmtmsg[256];
-//     vsnprintf(fmtmsg,sizeof(fmtmsg),msg,ap);
-//     va_end(ap);
+void _serverPanic(const char *file, int line, const char *msg, ...) {
+    va_list ap;
+    va_start(ap,msg);
+    char fmtmsg[256];
+    vsnprintf(fmtmsg,sizeof(fmtmsg),msg,ap);
+    va_end(ap);
 
-//     bugReportStart();
-//     serverLog(LL_WARNING,"------------------------------------------------");
-//     serverLog(LL_WARNING,"!!! Software Failure. Press left mouse button to continue");
-//     serverLog(LL_WARNING,"Guru Meditation: %s #%s:%d",fmtmsg,file,line);
+    // bugReportStart();
+    serverLog(LL_WARNING,"------------------------------------------------");
+    serverLog(LL_WARNING,"!!! Software Failure. Press left mouse button to continue");
+    serverLog(LL_WARNING,"Guru Meditation: %s #%s:%d",fmtmsg,file,line);
 
 //     if (server.crashlog_enabled) {
 // #ifdef HAVE_BACKTRACE
 //         logStackTrace(NULL, 1);
 // #endif
 //         printCrashReport();
-//     }
+    // }
 
-//     // remove the signal handler so on abort() we will output the crash report.
-//     removeSignalHandlers();
-//     bugReportEnd(0, 0);
-// }
+    // remove the signal handler so on abort() we will output the crash report.
+    // removeSignalHandlers();
+    // bugReportEnd(0, 0);
+}
 
 // void bugReportStart(void) {
 //     pthread_mutex_lock(&bug_report_start_mutex);

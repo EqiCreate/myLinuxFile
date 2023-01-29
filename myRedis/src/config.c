@@ -284,10 +284,10 @@ dict *configs = NULL; /* Runtime config values */
 
 // /* Lookup a config by the provided sds string name, or return NULL
 //  * if the config does not exist */
-// static standardConfig *lookupConfig(sds name) {
-//     dictEntry *de = dictFind(configs, name);
-//     return de ? dictGetVal(de) : NULL;
-// }
+static standardConfig *lookupConfig(sds name) {
+    dictEntry *de = dictFind(configs, name);
+    return de ? dictGetVal(de) : NULL;
+}
 
 /*-----------------------------------------------------------------------------
  * Enum access functions
@@ -439,196 +439,196 @@ dict *configs = NULL; /* Runtime config values */
 // /* Note this is here to support detecting we're running a config set from
 //  * within conf file parsing. This is only needed to support the deprecated
 //  * abnormal aggregate `save T C` functionality. Remove in the future. */
-// static int reading_config_file;
+static int reading_config_file;
 
-// void loadServerConfigFromString(char *config) {
-//     deprecatedConfig deprecated_configs[] = {
-//         {"list-max-ziplist-entries", 2, 2},
-//         {"list-max-ziplist-value", 2, 2},
-//         {"lua-replicate-commands", 2, 2},
-//         {NULL, 0},
-//     };
-//     char buf[1024];
-//     const char *err = NULL;
-//     int linenum = 0, totlines, i;
-//     sds *lines;
+void loadServerConfigFromString(char *config) {
+    deprecatedConfig deprecated_configs[] = {
+        {"list-max-ziplist-entries", 2, 2},
+        {"list-max-ziplist-value", 2, 2},
+        {"lua-replicate-commands", 2, 2},
+        {NULL, 0},
+    };
+    char buf[1024];
+    const char *err = NULL;
+    int linenum = 0, totlines, i;
+    sds *lines;
 
-//     reading_config_file = 1;
-//     lines = sdssplitlen(config,strlen(config),"\n",1,&totlines);
+    reading_config_file = 1;
+    lines = sdssplitlen(config,strlen(config),"\n",1,&totlines);
 
-//     for (i = 0; i < totlines; i++) {
-//         sds *argv;
-//         int argc;
+    for (i = 0; i < totlines; i++) {
+        sds *argv;
+        int argc;
 
-//         linenum = i+1;
-//         lines[i] = sdstrim(lines[i]," \t\r\n");
+        linenum = i+1;
+        lines[i] = sdstrim(lines[i]," \t\r\n");
 
-//         /* Skip comments and blank lines */
-//         if (lines[i][0] == '#' || lines[i][0] == '\0') continue;
+        /* Skip comments and blank lines */
+        if (lines[i][0] == '#' || lines[i][0] == '\0') continue;
 
-//         /* Split into arguments */
-//         argv = sdssplitargs(lines[i],&argc);
-//         if (argv == NULL) {
-//             err = "Unbalanced quotes in configuration line";
-//             goto loaderr;
-//         }
+        /* Split into arguments */
+        argv = sdssplitargs(lines[i],&argc);
+        if (argv == NULL) {
+            err = "Unbalanced quotes in configuration line";
+            goto loaderr;
+        }
 
-//         /* Skip this line if the resulting command vector is empty. */
-//         if (argc == 0) {
-//             sdsfreesplitres(argv,argc);
-//             continue;
-//         }
-//         sdstolower(argv[0]);
+        /* Skip this line if the resulting command vector is empty. */
+        if (argc == 0) {
+            sdsfreesplitres(argv,argc);
+            continue;
+        }
+        sdstolower(argv[0]);
 
-//         /* Iterate the configs that are standard */
-//         standardConfig *config = lookupConfig(argv[0]);
-//         if (config) {
-//             /* For normal single arg configs enforce we have a single argument.
-//              * Note that MULTI_ARG_CONFIGs need to validate arg count on their own */
-//             if (!(config->flags & MULTI_ARG_CONFIG) && argc != 2) {
-//                 err = "wrong number of arguments";
-//                 goto loaderr;
-//             }
+        /* Iterate the configs that are standard */
+        standardConfig *config = lookupConfig(argv[0]);
+        if (config) {
+            /* For normal single arg configs enforce we have a single argument.
+             * Note that MULTI_ARG_CONFIGs need to validate arg count on their own */
+            if (!(config->flags & MULTI_ARG_CONFIG) && argc != 2) {
+                err = "wrong number of arguments";
+                goto loaderr;
+            }
 
-//             if ((config->flags & MULTI_ARG_CONFIG) && argc == 2 && sdslen(argv[1])) {
-//                 /* For MULTI_ARG_CONFIGs, if we only have one argument, try to split it by spaces.
-//                  * Only if the argument is not empty, otherwise something like --save "" will fail.
-//                  * So that we can support something like --config "arg1 arg2 arg3". */
-//                 sds *new_argv;
-//                 int new_argc;
-//                 new_argv = sdssplitargs(argv[1], &new_argc);
-//                 if (!config->interface.set(config, new_argv, new_argc, &err)) {
-//                     goto loaderr;
-//                 }
-//                 sdsfreesplitres(new_argv, new_argc);
-//             } else {
-//                 /* Set config using all arguments that follows */
-//                 if (!config->interface.set(config, &argv[1], argc-1, &err)) {
-//                     goto loaderr;
-//                 }
-//             }
+            if ((config->flags & MULTI_ARG_CONFIG) && argc == 2 && sdslen(argv[1])) {
+                /* For MULTI_ARG_CONFIGs, if we only have one argument, try to split it by spaces.
+                 * Only if the argument is not empty, otherwise something like --save "" will fail.
+                 * So that we can support something like --config "arg1 arg2 arg3". */
+                sds *new_argv;
+                int new_argc;
+                new_argv = sdssplitargs(argv[1], &new_argc);
+                if (!config->interface.set(config, new_argv, new_argc, &err)) {
+                    goto loaderr;
+                }
+                sdsfreesplitres(new_argv, new_argc);
+            } else {
+                /* Set config using all arguments that follows */
+                if (!config->interface.set(config, &argv[1], argc-1, &err)) {
+                    goto loaderr;
+                }
+            }
 
-//             sdsfreesplitres(argv,argc);
-//             continue;
-//         } else {
-//             int match = 0;
-//             for (deprecatedConfig *config = deprecated_configs; config->name != NULL; config++) {
-//                 if (!strcasecmp(argv[0], config->name) && 
-//                     config->argc_min <= argc && 
-//                     argc <= config->argc_max) 
-//                 {
-//                     match = 1;
-//                     break;
-//                 }
-//             }
-//             if (match) {
-//                 sdsfreesplitres(argv,argc);
-//                 continue;
-//             }
-//         }
+            sdsfreesplitres(argv,argc);
+            continue;
+        } else {
+            int match = 0;
+            for (deprecatedConfig *config = deprecated_configs; config->name != NULL; config++) {
+                if (!strcasecmp(argv[0], config->name) && 
+                    config->argc_min <= argc && 
+                    argc <= config->argc_max) 
+                {
+                    match = 1;
+                    break;
+                }
+            }
+            if (match) {
+                sdsfreesplitres(argv,argc);
+                continue;
+            }
+        }
 
-//         /* Execute config directives */
-//         if (!strcasecmp(argv[0],"include") && argc == 2) {
-//             loadServerConfig(argv[1], 0, NULL);
-//         } else if (!strcasecmp(argv[0],"rename-command") && argc == 3) {
-//             struct redisCommand *cmd = lookupCommandBySds(argv[1]);
-//             int retval;
+        /* Execute config directives */
+        if (!strcasecmp(argv[0],"include") && argc == 2) {
+            loadServerConfig(argv[1], 0, NULL);
+        } else if (!strcasecmp(argv[0],"rename-command") && argc == 3) {
+            struct redisCommand *cmd = lookupCommandBySds(argv[1]);
+            int retval;
 
-//             if (!cmd) {
-//                 err = "No such command in rename-command";
-//                 goto loaderr;
-//             }
+            if (!cmd) {
+                err = "No such command in rename-command";
+                goto loaderr;
+            }
 
-//             /* If the target command name is the empty string we just
-//              * remove it from the command table. */
-//             retval = dictDelete(server.commands, argv[1]);
-//             serverAssert(retval == DICT_OK);
+            /* If the target command name is the empty string we just
+             * remove it from the command table. */
+            retval = dictDelete(server.commands, argv[1]);
+            serverAssert(retval == DICT_OK);
 
-//             /* Otherwise we re-add the command under a different name. */
-//             if (sdslen(argv[2]) != 0) {
-//                 sds copy = sdsdup(argv[2]);
+            /* Otherwise we re-add the command under a different name. */
+            if (sdslen(argv[2]) != 0) {
+                sds copy = sdsdup(argv[2]);
 
-//                 retval = dictAdd(server.commands, copy, cmd);
-//                 if (retval != DICT_OK) {
-//                     sdsfree(copy);
-//                     err = "Target command name already exists"; goto loaderr;
-//                 }
-//             }
-//         } else if (!strcasecmp(argv[0],"user") && argc >= 2) {
-//             int argc_err;
-//             if (ACLAppendUserForLoading(argv,argc,&argc_err) == C_ERR) {
-//                 const char *errmsg = ACLSetUserStringError();
-//                 snprintf(buf,sizeof(buf),"Error in user declaration '%s': %s",
-//                     argv[argc_err],errmsg);
-//                 err = buf;
-//                 goto loaderr;
-//             }
-//         } else if (!strcasecmp(argv[0],"loadmodule") && argc >= 2) {
-//             queueLoadModule(argv[1],&argv[2],argc-2);
-//         } else if (strchr(argv[0], '.')) {
-//             if (argc < 2) {
-//                 err = "Module config specified without value";
-//                 goto loaderr;
-//             }
-//             sds name = sdsdup(argv[0]);
-//             sds val = sdsdup(argv[1]);
-//             for (int i = 2; i < argc; i++)
-//                 val = sdscatfmt(val, " %S", argv[i]);
-//             if (!dictReplace(server.module_configs_queue, name, val)) sdsfree(name);
-//         } else if (!strcasecmp(argv[0],"sentinel")) {
-//             /* argc == 1 is handled by main() as we need to enter the sentinel
-//              * mode ASAP. */
-//             if (argc != 1) {
-//                 if (!server.sentinel_mode) {
-//                     err = "sentinel directive while not in sentinel mode";
-//                     goto loaderr;
-//                 }
-//                 queueSentinelConfig(argv+1,argc-1,linenum,lines[i]);
-//             }
-//         } else {
-//             err = "Bad directive or wrong number of arguments"; goto loaderr;
-//         }
-//         sdsfreesplitres(argv,argc);
-//     }
+                retval = dictAdd(server.commands, copy, cmd);
+                if (retval != DICT_OK) {
+                    sdsfree(copy);
+                    err = "Target command name already exists"; goto loaderr;
+                }
+            }
+        } else if (!strcasecmp(argv[0],"user") && argc >= 2) {
+            int argc_err;
+            if ( ACLAppendUserForLoading(argv,argc,&argc_err) == C_ERR) {
+                const char *errmsg = ACLSetUserStringError();
+                snprintf(buf,sizeof(buf),"Error in user declaration '%s': %s",
+                    argv[argc_err],errmsg);
+                err = buf;
+                goto loaderr;
+            }
+        } else if (!strcasecmp(argv[0],"loadmodule") && argc >= 2) {
+            // queueLoadModule(argv[1],&argv[2],argc-2);
+        } else if (strchr(argv[0], '.')) {
+            if (argc < 2) {
+                err = "Module config specified without value";
+                goto loaderr;
+            }
+            sds name = sdsdup(argv[0]);
+            sds val = sdsdup(argv[1]);
+            for (int i = 2; i < argc; i++)
+                val = sdscatfmt(val, " %S", argv[i]);
+            if (!dictReplace(server.module_configs_queue, name, val)) sdsfree(name);
+        } else if (!strcasecmp(argv[0],"sentinel")) {
+            /* argc == 1 is handled by main() as we need to enter the sentinel
+             * mode ASAP. */
+            if (argc != 1) {
+                if (!server.sentinel_mode) {
+                    err = "sentinel directive while not in sentinel mode";
+                    goto loaderr;
+                }
+                // queueSentinelConfig(argv+1,argc-1,linenum,lines[i]);
+            }
+        } else {
+            err = "Bad directive or wrong number of arguments"; goto loaderr;
+        }
+        sdsfreesplitres(argv,argc);
+    }
 
-//     if (server.logfile[0] != '\0') {
-//         FILE *logfp;
+    if (server.logfile[0] != '\0') {
+        FILE *logfp;
 
-//         /* Test if we are able to open the file. The server will not
-//          * be able to abort just for this problem later... */
-//         logfp = fopen(server.logfile,"a");
-//         if (logfp == NULL) {
-//             err = sdscatprintf(sdsempty(),
-//                                "Can't open the log file: %s", strerror(errno));
-//             goto loaderr;
-//         }
-//         fclose(logfp);
-//     }
+        /* Test if we are able to open the file. The server will not
+         * be able to abort just for this problem later... */
+        logfp = fopen(server.logfile,"a");
+        if (logfp == NULL) {
+            err = sdscatprintf(sdsempty(),
+                               "Can't open the log file: %s", strerror(errno));
+            goto loaderr;
+        }
+        fclose(logfp);
+    }
 
-//     /* Sanity checks. */
-//     if (server.cluster_enabled && server.masterhost) {
-//         err = "replicaof directive not allowed in cluster mode";
-//         goto loaderr;
-//     }
+    /* Sanity checks. */
+    if (server.cluster_enabled && server.masterhost) {
+        err = "replicaof directive not allowed in cluster mode";
+        goto loaderr;
+    }
 
-//     /* To ensure backward compatibility and work while hz is out of range */
-//     if (server.config_hz < CONFIG_MIN_HZ) server.config_hz = CONFIG_MIN_HZ;
-//     if (server.config_hz > CONFIG_MAX_HZ) server.config_hz = CONFIG_MAX_HZ;
+    /* To ensure backward compatibility and work while hz is out of range */
+    if (server.config_hz < CONFIG_MIN_HZ) server.config_hz = CONFIG_MIN_HZ;
+    if (server.config_hz > CONFIG_MAX_HZ) server.config_hz = CONFIG_MAX_HZ;
 
-//     sdsfreesplitres(lines,totlines);
-//     reading_config_file = 0;
-//     return;
+    sdsfreesplitres(lines,totlines);
+    reading_config_file = 0;
+    return;
 
-// loaderr:
-//     fprintf(stderr, "\n*** FATAL CONFIG FILE ERROR (Redis %s) ***\n",
-//         REDIS_VERSION);
-//     if (i < totlines) {
-//         fprintf(stderr, "Reading the configuration file, at line %d\n", linenum);
-//         fprintf(stderr, ">>> '%s'\n", lines[i]);
-//     }
-//     fprintf(stderr, "%s\n", err);
-//     exit(1);
-// }
+loaderr:
+    fprintf(stderr, "\n*** FATAL CONFIG FILE ERROR (Redis %s) ***\n",
+        REDIS_VERSION);
+    if (i < totlines) {
+        fprintf(stderr, "Reading the configuration file, at line %d\n", linenum);
+        fprintf(stderr, ">>> '%s'\n", lines[i]);
+    }
+    fprintf(stderr, "%s\n", err);
+    exit(1);
+}
 
 // /* Load the server configuration from the specified filename.
 //  * The function appends the additional configuration directives stored
@@ -637,79 +637,79 @@ dict *configs = NULL; /* Runtime config values */
 //  * Both filename and options can be NULL, in such a case are considered
 //  * empty. This way loadServerConfig can be used to just load a file or
 //  * just load a string. */
-// #define CONFIG_READ_LEN 1024
-// void loadServerConfig(char *filename, char config_from_stdin, char *options) {
-//     sds config = sdsempty();
-//     char buf[CONFIG_READ_LEN+1];
-//     FILE *fp;
-//     glob_t globbuf;
+#define CONFIG_READ_LEN 1024
+void loadServerConfig(char *filename, char config_from_stdin, char *options) {
+    sds config = sdsempty();
+    char buf[CONFIG_READ_LEN+1];
+    FILE *fp;
+    glob_t globbuf;
 
-//     /* Load the file content */
-//     if (filename) {
+    /* Load the file content */
+    if (filename) {
 
-//         /* The logic for handling wildcards has slightly different behavior in cases where
-//          * there is a failure to locate the included file.
-//          * Whether or not a wildcard is specified, we should ALWAYS log errors when attempting
-//          * to open included config files.
-//          *
-//          * However, we desire a behavioral difference between instances where a wildcard was
-//          * specified and those where it hasn't:
-//          *      no wildcards   : attempt to open the specified file and fail with a logged error
-//          *                       if the file cannot be found and opened.
-//          *      with wildcards : attempt to glob the specified pattern; if no files match the
-//          *                       pattern, then gracefully continue on to the next entry in the
-//          *                       config file, as if the current entry was never encountered.
-//          *                       This will allow for empty conf.d directories to be included. */
+        /* The logic for handling wildcards has slightly different behavior in cases where
+         * there is a failure to locate the included file.
+         * Whether or not a wildcard is specified, we should ALWAYS log errors when attempting
+         * to open included config files.
+         *
+         * However, we desire a behavioral difference between instances where a wildcard was
+         * specified and those where it hasn't:
+         *      no wildcards   : attempt to open the specified file and fail with a logged error
+         *                       if the file cannot be found and opened.
+         *      with wildcards : attempt to glob the specified pattern; if no files match the
+         *                       pattern, then gracefully continue on to the next entry in the
+         *                       config file, as if the current entry was never encountered.
+         *                       This will allow for empty conf.d directories to be included. */
 
-//         if (strchr(filename, '*') || strchr(filename, '?') || strchr(filename, '[')) {
-//             /* A wildcard character detected in filename, so let us use glob */
-//             if (glob(filename, 0, NULL, &globbuf) == 0) {
+        if (strchr(filename, '*') || strchr(filename, '?') || strchr(filename, '[')) {
+            /* A wildcard character detected in filename, so let us use glob */
+            if (glob(filename, 0, NULL, &globbuf) == 0) {
 
-//                 for (size_t i = 0; i < globbuf.gl_pathc; i++) {
-//                     if ((fp = fopen(globbuf.gl_pathv[i], "r")) == NULL) {
-//                         serverLog(LL_WARNING,
-//                                   "Fatal error, can't open config file '%s': %s",
-//                                   globbuf.gl_pathv[i], strerror(errno));
-//                         exit(1);
-//                     }
-//                     while(fgets(buf,CONFIG_READ_LEN+1,fp) != NULL)
-//                         config = sdscat(config,buf);
-//                     fclose(fp);
-//                 }
+                for (size_t i = 0; i < globbuf.gl_pathc; i++) {
+                    if ((fp = fopen(globbuf.gl_pathv[i], "r")) == NULL) {
+                        serverLog(LL_WARNING,
+                                  "Fatal error, can't open config file '%s': %s",
+                                  globbuf.gl_pathv[i], strerror(errno));
+                        exit(1);
+                    }
+                    while(fgets(buf,CONFIG_READ_LEN+1,fp) != NULL)
+                        config = sdscat(config,buf);
+                    fclose(fp);
+                }
 
-//                 globfree(&globbuf);
-//             }
-//         } else {
-//             /* No wildcard in filename means we can use the original logic to read and
-//              * potentially fail traditionally */
-//             if ((fp = fopen(filename, "r")) == NULL) {
-//                 serverLog(LL_WARNING,
-//                           "Fatal error, can't open config file '%s': %s",
-//                           filename, strerror(errno));
-//                 exit(1);
-//             }
-//             while(fgets(buf,CONFIG_READ_LEN+1,fp) != NULL)
-//                 config = sdscat(config,buf);
-//             fclose(fp);
-//         }
-//     }
+                globfree(&globbuf);
+            }
+        } else {
+            /* No wildcard in filename means we can use the original logic to read and
+             * potentially fail traditionally */
+            if ((fp = fopen(filename, "r")) == NULL) {
+                serverLog(LL_WARNING,
+                          "Fatal error, can't open config file '%s': %s",
+                          filename, strerror(errno));
+                exit(1);
+            }
+            while(fgets(buf,CONFIG_READ_LEN+1,fp) != NULL)
+                config = sdscat(config,buf);
+            fclose(fp);
+        }
+    }
 
-//     /* Append content from stdin */
-//     if (config_from_stdin) {
-//         serverLog(LL_WARNING,"Reading config from stdin");
-//         fp = stdin;
-//         while(fgets(buf,CONFIG_READ_LEN+1,fp) != NULL)
-//             config = sdscat(config,buf);
-//     }
+    /* Append content from stdin */
+    if (config_from_stdin) {
+        serverLog(LL_WARNING,"Reading config from stdin");
+        fp = stdin;
+        while(fgets(buf,CONFIG_READ_LEN+1,fp) != NULL)
+            config = sdscat(config,buf);
+    }
 
-//     /* Append the additional options */
-//     if (options) {
-//         config = sdscat(config,"\n");
-//         config = sdscat(config,options);
-//     }
-//     loadServerConfigFromString(config);
-//     sdsfree(config);
-// }
+    /* Append the additional options */
+    if (options) {
+        config = sdscat(config,"\n");
+        config = sdscat(config,options);
+    }
+    loadServerConfigFromString(config);
+    sdsfree(config);
+}
 
 // static int performInterfaceSet(standardConfig *config, sds value, const char **errstr) {
 //     sds *argv;

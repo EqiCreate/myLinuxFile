@@ -356,28 +356,28 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
 //  * Return 1 if the key was added from scratch, 0 if there was already an
 //  * element with such key and dictReplace() just performed a value update
 //  * operation. */
-// int dictReplace(dict *d, void *key, void *val)
-// {
-//     dictEntry *entry, *existing, auxentry;
+int dictReplace(dict *d, void *key, void *val)
+{
+    dictEntry *entry, *existing, auxentry;
 
-//     /* Try to add the element. If the key
-//      * does not exists dictAdd will succeed. */
-//     entry = dictAddRaw(d,key,&existing);
-//     if (entry) {
-//         dictSetVal(d, entry, val);
-//         return 1;
-//     }
+    /* Try to add the element. If the key
+     * does not exists dictAdd will succeed. */
+    entry = dictAddRaw(d,key,&existing);
+    if (entry) {
+        dictSetVal(d, entry, val);
+        return 1;
+    }
 
-//     /* Set the new value and free the old one. Note that it is important
-//      * to do that in this order, as the value may just be exactly the same
-//      * as the previous one. In this context, think to reference counting,
-//      * you want to increment (set), and then decrement (free), and not the
-//      * reverse. */
-//     auxentry = *existing;
-//     dictSetVal(d, existing, val);
-//     dictFreeVal(d, &auxentry);
-//     return 0;
-// }
+    /* Set the new value and free the old one. Note that it is important
+     * to do that in this order, as the value may just be exactly the same
+     * as the previous one. In this context, think to reference counting,
+     * you want to increment (set), and then decrement (free), and not the
+     * reverse. */
+    auxentry = *existing;
+    dictSetVal(d, existing, val);
+    dictFreeVal(d, &auxentry);
+    return 0;
+}
 
 // /* Add or Find:
 //  * dictAddOrFind() is simply a version of dictAddRaw() that always
@@ -395,47 +395,47 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
 // /* Search and remove an element. This is a helper function for
 //  * dictDelete() and dictUnlink(), please check the top comment
 //  * of those functions. */
-// static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
-//     uint64_t h, idx;
-//     dictEntry *he, *prevHe;
-//     int table;
+static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
+    uint64_t h, idx;
+    dictEntry *he, *prevHe;
+    int table;
 
-//     /* dict is empty */
-//     if (dictSize(d) == 0) return NULL;
+    /* dict is empty */
+    if (dictSize(d) == 0) return NULL;
 
-//     if (dictIsRehashing(d)) _dictRehashStep(d);
-//     h = dictHashKey(d, key);
+    if (dictIsRehashing(d)) _dictRehashStep(d);
+    h = dictHashKey(d, key);
 
-//     for (table = 0; table <= 1; table++) {
-//         idx = h & DICTHT_SIZE_MASK(d->ht_size_exp[table]);
-//         he = d->ht_table[table][idx];
-//         prevHe = NULL;
-//         while(he) {
-//             if (key==he->key || dictCompareKeys(d, key, he->key)) {
-//                 /* Unlink the element from the list */
-//                 if (prevHe)
-//                     prevHe->next = he->next;
-//                 else
-//                     d->ht_table[table][idx] = he->next;
-//                 if (!nofree) {
-//                     dictFreeUnlinkedEntry(d, he);
-//                 }
-//                 d->ht_used[table]--;
-//                 return he;
-//             }
-//             prevHe = he;
-//             he = he->next;
-//         }
-//         if (!dictIsRehashing(d)) break;
-//     }
-//     return NULL; /* not found */
-// }
+    for (table = 0; table <= 1; table++) {
+        idx = h & DICTHT_SIZE_MASK(d->ht_size_exp[table]);
+        he = d->ht_table[table][idx];
+        prevHe = NULL;
+        while(he) {
+            if (key==he->key || dictCompareKeys(d, key, he->key)) {
+                /* Unlink the element from the list */
+                if (prevHe)
+                    prevHe->next = he->next;
+                else
+                    d->ht_table[table][idx] = he->next;
+                if (!nofree) {
+                    dictFreeUnlinkedEntry(d, he);
+                }
+                d->ht_used[table]--;
+                return he;
+            }
+            prevHe = he;
+            he = he->next;
+        }
+        if (!dictIsRehashing(d)) break;
+    }
+    return NULL; /* not found */
+}
 
 // /* Remove an element, returning DICT_OK on success or DICT_ERR if the
 //  * element was not found. */
-// int dictDelete(dict *ht, const void *key) {
-//     return dictGenericDelete(ht,key,0) ? DICT_OK : DICT_ERR;
-// }
+int dictDelete(dict *ht, const void *key) {
+    return dictGenericDelete(ht,key,0) ? DICT_OK : DICT_ERR;
+}
 
 // /* Remove an element from the table, but without actually releasing
 //  * the key, value and dictionary entry. The dictionary entry is returned
@@ -464,12 +464,12 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
 
 // /* You need to call this function to really free the entry after a call
 //  * to dictUnlink(). It's safe to call this function with 'he' = NULL. */
-// void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
-//     if (he == NULL) return;
-//     dictFreeKey(d, he);
-//     dictFreeVal(d, he);
-//     zfree(he);
-// }
+void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
+    if (he == NULL) return;
+    dictFreeKey(d, he);
+    dictFreeVal(d, he);
+    zfree(he);
+}
 
 // /* Destroy an entire dictionary */
 // int _dictClear(dict *d, int htidx, void(callback)(dict*)) {
@@ -506,33 +506,33 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
 //     zfree(d);
 // }
 
-// dictEntry *dictFind(dict *d, const void *key)
-// {
-//     dictEntry *he;
-//     uint64_t h, idx, table;
+dictEntry *dictFind(dict *d, const void *key)
+{
+    dictEntry *he;
+    uint64_t h, idx, table;
 
-//     if (dictSize(d) == 0) return NULL; /* dict is empty */
-//     if (dictIsRehashing(d)) _dictRehashStep(d);
-//     h = dictHashKey(d, key);
-//     for (table = 0; table <= 1; table++) {
-//         idx = h & DICTHT_SIZE_MASK(d->ht_size_exp[table]);
-//         he = d->ht_table[table][idx];
-//         while(he) {
-//             if (key==he->key || dictCompareKeys(d, key, he->key))
-//                 return he;
-//             he = he->next;
-//         }
-//         if (!dictIsRehashing(d)) return NULL;
-//     }
-//     return NULL;
-// }
+    if (dictSize(d) == 0) return NULL; /* dict is empty */
+    if (dictIsRehashing(d)) _dictRehashStep(d);
+    h = dictHashKey(d, key);
+    for (table = 0; table <= 1; table++) {
+        idx = h & DICTHT_SIZE_MASK(d->ht_size_exp[table]);
+        he = d->ht_table[table][idx];
+        while(he) {
+            if (key==he->key || dictCompareKeys(d, key, he->key))
+                return he;
+            he = he->next;
+        }
+        if (!dictIsRehashing(d)) return NULL;
+    }
+    return NULL;
+}
 
-// void *dictFetchValue(dict *d, const void *key) {
-//     dictEntry *he;
+void *dictFetchValue(dict *d, const void *key) {
+    dictEntry *he;
 
-//     he = dictFind(d,key);
-//     return he ? dictGetVal(he) : NULL;
-// }
+    he = dictFind(d,key);
+    return he ? dictGetVal(he) : NULL;
+}
 
 // /* A fingerprint is a 64 bit number that represents the state of the dictionary
 //  * at a given time, it's just a few dict properties xored together.

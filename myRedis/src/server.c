@@ -8,6 +8,60 @@
 #include "Main/mt19937-64.h"
 // #include "functions.h"
 
+
+struct redisCommand *lookupSubcommand(struct redisCommand *container, sds sub_name) {
+    return dictFetchValue(container->subcommands_dict, sub_name);
+}
+
+/* Look up a command by argv and argc
+ *
+ * If `strict` is not 0 we expect argc to be exact (i.e. argc==2
+ * for a subcommand and argc==1 for a top-level command)
+ * `strict` should be used every time we want to look up a command
+ * name (e.g. in COMMAND INFO) rather than to find the command
+ * a user requested to execute (in processCommand).
+ */
+struct redisCommand *lookupCommandLogic(dict *commands, robj **argv, int argc, int strict) {
+    struct redisCommand *base_cmd = dictFetchValue(commands, argv[0]->ptr);
+    int has_subcommands = base_cmd && base_cmd->subcommands_dict;
+    if (argc == 1 || !has_subcommands) {
+        if (strict && argc != 1)
+            return NULL;
+        /* Note: It is possible that base_cmd->proc==NULL (e.g. CONFIG) */
+        return base_cmd;
+    } else { /* argc > 1 && has_subcommands */
+        if (strict && argc != 2)
+            return NULL;
+        /* Note: Currently we support just one level of subcommands */
+        return lookupSubcommand(base_cmd, argv[1]->ptr);
+    }
+}
+struct redisCommand *lookupCommandBySdsLogic(dict *commands, sds s) {
+    int argc, j;
+    sds *strings = sdssplitlen(s,sdslen(s),"|",1,&argc);
+    if (strings == NULL)
+        return NULL;
+    if (argc > 2) {
+        /* Currently we support just one level of subcommands */
+        sdsfreesplitres(strings,argc);
+        return NULL;
+    }
+
+    robj objects[argc];
+    robj *argv[argc];
+    for (j = 0; j < argc; j++) {
+        initStaticStringObject(objects[j],strings[j]);
+        argv[j] = &objects[j];
+    }
+
+    struct redisCommand *cmd = lookupCommandLogic(commands,argv,argc,1);
+    sdsfreesplitres(strings,argc);
+    return cmd;
+}
+struct redisCommand *lookupCommandBySds(sds s) {
+    return lookupCommandBySdsLogic(server.commands,s);
+}
+
 /* Returns 1 if there is --sentinel among the arguments or if
  * executable name contains "redis-sentinel". */
 int checkForSentinelMode(int argc, char **argv, char *exec_name) {
@@ -223,6 +277,20 @@ dictType sdsHashDictType = {
 //     }
 // }
 
+void version(void) {
+    printf("Redis server v=%s sha=%s:%d malloc=%s bits=%d build=%llx\n",
+        REDIS_VERSION,
+        1111,
+        // redisGitSHA1(),a
+        // atoi(redisGitDirty()) > 0,
+        0,
+        ZMALLOC_LIB,
+        sizeof(long) == 4 ? 32 : 64,
+        REDIS_VERSION_NUM);
+        // (unsigned long long) redisBuildId());
+    exit(0);
+}
+
 /*============================ Utility functions ============================ */
 
 /* We use a private localtime implementation which is fork-safe. The logging
@@ -344,5 +412,89 @@ int main(int argc, char **argv)
     if (exec_name == NULL) exec_name = argv[0];
     server.sentinel_mode = checkForSentinelMode(argc,argv, exec_name);
     initServerConfig();
+    ACLInit(); /* The ACL subsystem must be initialized ASAP because the
+                  basic networking code and client creation depends on it. */
+    // moduleInitModulesSystem();
+    // connTypeInitialize();
+
+    /* Store the executable path and arguments in a safe place in order
+     * to be able to restart the server later. */
+    server.executable = getAbsolutePath(argv[0]);
+    server.exec_argv = zmalloc(sizeof(char*)*(argc+1));
+    server.exec_argv[argc] = NULL;
+    for (j = 0; j < argc; j++) server.exec_argv[j] = zstrdup(argv[j]);
+
+      /* We need to init sentinel right now as parsing the configuration file
+     * in sentinel mode will have the effect of populating the sentinel
+     * data structures with master nodes to monitor. */
+    if (server.sentinel_mode) {
+        // initSentinelConfig();//哨兵模式，便于主从切换
+        // initSentinel();
+    }
+
+     /* Check if we need to start in redis-check-rdb/aof mode. We just execute
+     * the program main. However the program is part of the Redis executable
+     * so that we can easily execute an RDB check on loading errors. */
+    // if (strstr(exec_name,"redis-check-rdb") != NULL)
+    //     redis_check_rdb_main(argc,argv,NULL);
+    // else if (strstr(exec_name,"redis-check-aof") != NULL)
+    //     redis_check_aof_main(argc,argv);
+
+    if (argc >= 2) {
+            j = 1; /* First option to parse in argv[] */
+            sds options = sdsempty();
+              /* Handle special options --help and --version */
+    if (strcmp(argv[1], "-v") == 0 ||
+        strcmp(argv[1], "--version") == 0) version();
+    /* Parse command line options
+        * Precedence wise, File, stdin, explicit options -- last config is the one that matters.
+        *
+        * First argument is the config file name? */
+    if (argv[1][0] != '-') {
+        /* Replace the config file in server.exec_argv with its absolute path. */
+        server.configfile = getAbsolutePath(argv[1]);
+        zfree(server.exec_argv[1]);
+        server.exec_argv[1] = zstrdup(server.configfile);
+        j = 2; // Skip this arg when parsing options
+        }
+    sds *argv_tmp;
+    int argc_tmp;
+    int handled_last_config_arg = 1;
+    while(j < argc) {
+            /* Either first or last argument - Should we read config from stdin? */
+            if (argv[j][0] == '-' && argv[j][1] == '\0' && (j == 1 || j == argc-1)) {
+
+            }
+            /* All the other options are parsed and conceptually appended to the
+             * configuration file. For instance --port 6380 will generate the
+             * string "port 6380\n" to be parsed after the actual config file
+             * and stdin input are parsed (if they exist).
+             * Only consider that if the last config has at least one argument. */
+            else if (handled_last_config_arg && argv[j][0] == '-' && argv[j][1] == '-'){
+
+            }
+            else{
+                 /* Option argument */
+                options = sdscatrepr(options,argv[j],strlen(argv[j]));
+                options = sdscat(options," ");
+                handled_last_config_arg = 1;
+            }
+            j++;
+
+        }
+        loadServerConfig(server.configfile, config_from_stdin, options);
+        // if (server.sentinel_mode) loadSentinelConfigFromQueue();
+        sdsfree(options);
+
+    }
+    
+
+    if (argc == 1) {
+        serverLog(LL_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/redis.conf", argv[0]);
+    } else {
+        serverLog(LL_WARNING, "Configuration loaded");
+    }
+
+    aeMain(server.el);
 
 }
