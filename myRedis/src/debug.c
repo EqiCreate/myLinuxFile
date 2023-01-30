@@ -2004,10 +2004,11 @@ void _serverPanic(const char *file, int line, const char *msg, ...) {
 
 // typedef void (*invalidFunctionWasCalledType)();
 
-// void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
-//     UNUSED(secret);
-//     UNUSED(info);
-
+void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
+    UNUSED(secret);
+    UNUSED(info);
+    serverLog(LL_WARNING,
+        "Redis %s crashed by signal: %d, si_code: %d", REDIS_VERSION, sig, info->si_code);
 //     bugReportStart();
 //     serverLog(LL_WARNING,
 //         "Redis %s crashed by signal: %d, si_code: %d", REDIS_VERSION, sig, info->si_code);
@@ -2057,7 +2058,7 @@ void _serverPanic(const char *file, int line, const char *msg, ...) {
 // #endif
 
 //     bugReportEnd(1, sig);
-// }
+}
 
 // void printCrashReport(void) {
 //     /* Log INFO and CLIENT LIST */
@@ -2136,16 +2137,16 @@ void _serverPanic(const char *file, int line, const char *msg, ...) {
 // }
 
 // /* =========================== Software Watchdog ============================ */
-// #include <sys/time.h>
+#include <sys/time.h>
 
-// void watchdogSignalHandler(int sig, siginfo_t *info, void *secret) {
-// #ifdef HAVE_BACKTRACE
-//     ucontext_t *uc = (ucontext_t*) secret;
-// #else
-//     (void)secret;
-// #endif
-//     UNUSED(info);
-//     UNUSED(sig);
+void watchdogSignalHandler(int sig, siginfo_t *info, void *secret) {
+#ifdef HAVE_BACKTRACE
+    ucontext_t *uc = (ucontext_t*) secret;
+#else
+    (void)secret;
+#endif
+    UNUSED(info);
+    UNUSED(sig);
 
 //     serverLogFromHandler(LL_WARNING,"\n--- WATCHDOG TIMER EXPIRED ---");
 // #ifdef HAVE_BACKTRACE
@@ -2154,50 +2155,50 @@ void _serverPanic(const char *file, int line, const char *msg, ...) {
 //     serverLogFromHandler(LL_WARNING,"Sorry: no support for backtrace().");
 // #endif
 //     serverLogFromHandler(LL_WARNING,"--------\n");
-// }
+}
 
 // /* Schedule a SIGALRM delivery after the specified period in milliseconds.
 //  * If a timer is already scheduled, this function will re-schedule it to the
 //  * specified time. If period is 0 the current timer is disabled. */
-// void watchdogScheduleSignal(int period) {
-//     struct itimerval it;
+void watchdogScheduleSignal(int period) {
+    struct itimerval it;
 
-//     /* Will stop the timer if period is 0. */
-//     it.it_value.tv_sec = period/1000;
-//     it.it_value.tv_usec = (period%1000)*1000;
-//     /* Don't automatically restart. */
-//     it.it_interval.tv_sec = 0;
-//     it.it_interval.tv_usec = 0;
-//     setitimer(ITIMER_REAL, &it, NULL);
-// }
-// void applyWatchdogPeriod() {
-//     struct sigaction act;
+    /* Will stop the timer if period is 0. */
+    it.it_value.tv_sec = period/1000;
+    it.it_value.tv_usec = (period%1000)*1000;
+    /* Don't automatically restart. */
+    it.it_interval.tv_sec = 0;
+    it.it_interval.tv_usec = 0;
+    setitimer(ITIMER_REAL, &it, NULL);
+}
+void applyWatchdogPeriod() {
+    struct sigaction act;
 
-//     /* Disable watchdog when period is 0 */
-//     if (server.watchdog_period == 0) {
-//         watchdogScheduleSignal(0); /* Stop the current timer. */
+    /* Disable watchdog when period is 0 */
+    if (server.watchdog_period == 0) {
+        watchdogScheduleSignal(0); /* Stop the current timer. */
 
-//         /* Set the signal handler to SIG_IGN, this will also remove pending
-//          * signals from the queue. */
-//         sigemptyset(&act.sa_mask);
-//         act.sa_flags = 0;
-//         act.sa_handler = SIG_IGN;
-//         sigaction(SIGALRM, &act, NULL);
-//     } else {
-//         /* Setup the signal handler. */
-//         sigemptyset(&act.sa_mask);
-//         act.sa_flags = SA_SIGINFO;
-//         act.sa_sigaction = watchdogSignalHandler;
-//         sigaction(SIGALRM, &act, NULL);
+        /* Set the signal handler to SIG_IGN, this will also remove pending
+         * signals from the queue. */
+        sigemptyset(&act.sa_mask);
+        act.sa_flags = 0;
+        act.sa_handler = SIG_IGN;
+        sigaction(SIGALRM, &act, NULL);
+    } else {
+        /* Setup the signal handler. */
+        sigemptyset(&act.sa_mask);
+        act.sa_flags = SA_SIGINFO;
+        act.sa_sigaction = watchdogSignalHandler;
+        sigaction(SIGALRM, &act, NULL);
 
-//         /* If the configured period is smaller than twice the timer period, it is
-//          * too short for the software watchdog to work reliably. Fix it now
-//          * if needed. */
-//         int min_period = (1000/server.hz)*2;
-//         if (server.watchdog_period < min_period) server.watchdog_period = min_period;
-//         watchdogScheduleSignal(server.watchdog_period); /* Adjust the current timer. */
-//     }
-// }
+        /* If the configured period is smaller than twice the timer period, it is
+         * too short for the software watchdog to work reliably. Fix it now
+         * if needed. */
+        int min_period = (1000/server.hz)*2;
+        if (server.watchdog_period < min_period) server.watchdog_period = min_period;
+        watchdogScheduleSignal(server.watchdog_period); /* Adjust the current timer. */
+    }
+}
 
 // /* Positive input is sleep time in microseconds. Negative input is fractions
 //  * of microseconds, i.e. -10 means 100 nanoseconds. */

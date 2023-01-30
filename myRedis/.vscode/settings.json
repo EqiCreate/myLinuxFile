@@ -21,7 +21,8 @@
         "redismodule.h": "c",
         "rdb.h": "c",
         "fpconv_dtoa.h": "c",
-        "sha256.h": "c"
+        "sha256.h": "c",
+        "signal.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

@@ -1,6 +1,7 @@
 #ifndef __REDIS_H
 #define __REDIS_H
 
+#include "fmacros.h"
 #include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,7 +10,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <assert.h>
-
+#include <signal.h>
+#include <pthread.h> //about threads
 #include "zmalloc.h" /* total memory usage aware version of malloc/free */
 #include "crc64.h"
 #include "util.h"    /* Misc functions useful in many places */
@@ -46,6 +48,18 @@
 #define OBJ_SHARED_REFCOUNT INT_MAX     /* Global object never destroyed. */
 #define OBJ_STATIC_REFCOUNT (INT_MAX-1) /* Object allocated in the stack. */
 #define OBJ_FIRST_SPECIAL_REFCOUNT OBJ_STATIC_REFCOUNT
+
+/* AIX defines hz to __hz, we don't use this define and in order to allow
+ * Redis build on AIX we need to undef it. */
+#ifdef _AIX
+#undef hz
+#endif
+
+#define CHILD_TYPE_NONE 0
+#define CHILD_TYPE_RDB 1
+#define CHILD_TYPE_AOF 2
+#define CHILD_TYPE_LDB 3
+#define CHILD_TYPE_MODULE 4
 
 /* Log levels */
 #define LL_DEBUG 0
@@ -140,6 +154,30 @@ typedef long long ustime_t; /* microsecond time type. */
 #define OBJ_SET 2       /* Set object. */
 #define OBJ_ZSET 3      /* Sorted set object. */
 #define OBJ_HASH 4      /* Hash object. */
+
+/* When configuring the server eventloop, we setup it so that the total number
+ * of file descriptors we can handle are server.maxclients + RESERVED_FDS +
+ * a few more to stay safe. Since RESERVED_FDS defaults to 32, we add 96
+ * in order to make sure of not over provisioning more than 128 fds. */
+#define CONFIG_FDSET_INCR (CONFIG_MIN_RESERVED_FDS+96)
+
+/* Redis maxmemory strategies. Instead of using just incremental number
+ * for this defines, we use a set of flags so that testing for certain
+ * properties common to multiple policies is faster. */
+#define MAXMEMORY_FLAG_LRU (1<<0)
+#define MAXMEMORY_FLAG_LFU (1<<1)
+#define MAXMEMORY_FLAG_ALLKEYS (1<<2)
+#define MAXMEMORY_FLAG_NO_SHARED_INTEGERS \
+    (MAXMEMORY_FLAG_LRU|MAXMEMORY_FLAG_LFU)
+
+#define MAXMEMORY_VOLATILE_LRU ((0<<8)|MAXMEMORY_FLAG_LRU)
+#define MAXMEMORY_VOLATILE_LFU ((1<<8)|MAXMEMORY_FLAG_LFU)
+#define MAXMEMORY_VOLATILE_TTL (2<<8)
+#define MAXMEMORY_VOLATILE_RANDOM (3<<8)
+#define MAXMEMORY_ALLKEYS_LRU ((4<<8)|MAXMEMORY_FLAG_LRU|MAXMEMORY_FLAG_ALLKEYS)
+#define MAXMEMORY_ALLKEYS_LFU ((5<<8)|MAXMEMORY_FLAG_LFU|MAXMEMORY_FLAG_ALLKEYS)
+#define MAXMEMORY_ALLKEYS_RANDOM ((6<<8)|MAXMEMORY_FLAG_ALLKEYS)
+#define MAXMEMORY_NO_EVICTION (7<<8)
 
 /* Macro used to initialize a Redis object allocated on the stack.
  * Note that this macro is taken near the structure definition to make sure
@@ -618,7 +656,7 @@ typedef struct client {
 struct redisServer {
     /* General */
     pid_t pid;                  /* Main process pid. */
-    // pthread_t main_thread_id;         /* Main thread id */
+    pthread_t main_thread_id;         /* Main thread id */
     char *configfile;           /* Absolute config file path, or NULL */
     char *executable;           /* Absolute executable file path. */
     char **exec_argv;           /* Executable argv vector (copy). */
@@ -635,15 +673,15 @@ struct redisServer {
     aeEventLoop *el;
     // rax *errors;                /* Errors table */
     // redisAtomic unsigned int lruclock; /* Clock for LRU eviction */
-    // volatile sig_atomic_t shutdown_asap; /* Shutdown ordered by signal handler. */
+    volatile sig_atomic_t shutdown_asap; /* Shutdown ordered by signal handler. */
     // mstime_t shutdown_mstime;   /* Timestamp to limit graceful shutdown. */
-    // int last_sig_received;      /* Indicates the last SIGNAL received, if any (e.g., SIGINT or SIGTERM). */
+    int last_sig_received;      /* Indicates the last SIGNAL received, if any (e.g., SIGINT or SIGTERM). */
     // int shutdown_flags;         /* Flags passed to prepareForShutdown(). */
     // int activerehashing;        /* Incremental rehash in serverCron() */
     // int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) */
     // char *pidfile;              /* PID file path */
     int arch_bits;              /* 32 or 64 depending on sizeof(long) */
-    // int cronloops;              /* Number of times the cron function run */
+    int cronloops;              /* Number of times the cron function run */
     // char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
     int sentinel_mode;          /* True if this instance is a Sentinel. */
     // size_t initial_memory_usage; /* Bytes used after initialization. */
@@ -663,7 +701,7 @@ struct redisServer {
     //                                modules share with each other. */
     dict *module_configs_queue; /* Dict that stores module configurations from .conf file until after modules are loaded during startup or arguments to loadex. */
     // list *loadmodule_queue;     /* List of modules to load at startup. */
-    // int module_pipe[2];         /* Pipe used to awake the event loop by module threads. */
+    int module_pipe[2];         /* Pipe used to awake the event loop by module threads. */
     // pid_t child_pid;            /* PID of current child */
     // int child_type;             /* Type of current child */
     // /* Networking */
@@ -691,7 +729,7 @@ struct redisServer {
     // rax *clients_timeout_table; /* Radix tree for blocked clients timeouts. */
     int in_nested_call;         /* If > 0, in a nested call of a call */
     // rax *clients_index;         /* Active clients dictionary by client ID. */
-    // uint32_t paused_actions;   /* Bitmask of actions that are currently paused */
+    uint32_t paused_actions;   /* Bitmask of actions that are currently paused */
     // list *postponed_clients;       /* List of postponed clients */
     // pause_event client_pause_per_purpose[NUM_PAUSE_PURPOSES];
     // char neterr[ANET_ERR_LEN];   /* Error buffer for anet.c */
@@ -701,13 +739,13 @@ struct redisServer {
     // int io_threads_num;         /* Number of IO threads to use. */
     // int io_threads_do_reads;    /* Read and parse from IO threads? */
     // int io_threads_active;      /* Is IO threads currently active? */
-    // long long events_processed_while_blocked; /* processEventsWhileBlocked() */
+    long long events_processed_while_blocked; /* processEventsWhileBlocked() */
     // int enable_protected_configs;    /* Enable the modification of protected configs, see PROTECTED_ACTION_ALLOWED_* */
     // int enable_debug_cmd;            /* Enable DEBUG commands, see PROTECTED_ACTION_ALLOWED_* */
     // int enable_module_cmd;           /* Enable MODULE commands, see PROTECTED_ACTION_ALLOWED_* */
 
     // /* RDB / AOF loading information */
-    // volatile sig_atomic_t loading; /* We are loading data from disk if true */
+    volatile sig_atomic_t loading; /* We are loading data from disk if true */
     // volatile sig_atomic_t async_loading; /* We are loading data without blocking the db being served */
     // off_t loading_total_bytes;
     // off_t loading_rdb_used_mem;
@@ -735,7 +773,7 @@ struct redisServer {
     // long long stat_active_defrag_scanned;   /* number of dictEntries scanned */
     // long long stat_total_active_defrag_time; /* Total time memory fragmentation over the limit, unit us */
     // monotime stat_last_active_defrag_time; /* Timestamp of current active defrag start */
-    // size_t stat_peak_memory;        /* Max used memory record */
+    size_t stat_peak_memory;        /* Max used memory record */
     // long long stat_aof_rewrites;    /* number of aof file rewrites performed */
     // long long stat_aofrw_consecutive_failures; /* The number of consecutive failures of aofrw */
     // long long stat_rdb_saves;       /* number of rdb saves performed */
@@ -804,11 +842,11 @@ struct redisServer {
     int dbnum;                      /* Total number of configured DBs */
     // int supervised;                 /* 1 if supervised, 0 otherwise. */
     // int supervised_mode;            /* See SUPERVISED_* */
-    // int daemonize;                  /* True if running as a daemon */
+    int daemonize;                  /* True if running as a daemon */
     // int set_proc_title;             /* True if change proc title */
     // char *proc_title_template;      /* Process title template format */
     // clientBufferLimitsConfig client_obuf_limits[CLIENT_TYPE_OBUF_COUNT];
-    // int pause_cron;                 /* Don't run cron tasks (debug) */
+    int pause_cron;                 /* Don't run cron tasks (debug) */
     // int latency_tracking_enabled;   /* 1 if extended latency tracking is enabled, 0 otherwise. */
     // double *latency_tracking_info_percentiles; /* Extended latency tracking info output percentile list configuration. */
     // int latency_tracking_info_percentiles_len;
@@ -889,13 +927,13 @@ struct redisServer {
     // int child_info_nread;           /* Num of bytes of the last read from pipe */
     // /* Propagation of commands in AOF / replication */
     // redisOpArray also_propagate;    /* Additional command to propagate. */
-    // int replication_allowed;        /* Are we allowed to replicate? */
+    int replication_allowed;        /* Are we allowed to replicate? */
     // /* Logging */
     char *logfile;                  /* Path of log file */
     int syslog_enabled;             /* Is syslog enabled? */
-    // char *syslog_ident;             /* Syslog ident */
-    // int syslog_facility;            /* Syslog facility */
-    // int crashlog_enabled;           /* Enable signal handler for crashlog.
+    char *syslog_ident;             /* Syslog ident */
+    int syslog_facility;            /* Syslog facility */
+    int crashlog_enabled;           /* Enable signal handler for crashlog.
     //                                  * disable for clean core dumps. */
     // int memcheck_enabled;           /* Enable memory check on crash. */
     // int use_exit_on_panic;          /* Use exit() on panic and assert rather than
@@ -970,10 +1008,10 @@ struct redisServer {
     // list *clients_waiting_acks;         /* Clients waiting in WAIT command. */
     // int get_ack_from_slaves;            /* If true we send REPLCONF GETACK. */
     // /* Limits */
-    // unsigned int maxclients;            /* Max number of simultaneous clients */
-    // unsigned long long maxmemory;   /* Max number of memory bytes to use */
+    unsigned int maxclients;            /* Max number of simultaneous clients */
+    unsigned long long maxmemory;   /* Max number of memory bytes to use */
     // ssize_t maxmemory_clients;       /* Memory limit for total client buffers */
-    // int maxmemory_policy;           /* Policy for key eviction */
+    int maxmemory_policy;           /* Policy for key eviction */
     // int maxmemory_samples;          /* Precision of random sampling */
     // int maxmemory_eviction_tenacity;/* Aggressiveness of eviction processing */
     // int lfu_log_factor;             /* LFU logarithmic counter factor. */
@@ -1017,8 +1055,8 @@ struct redisServer {
     int daylight_active;        /* Currently in daylight saving time. */
     mstime_t mstime;            /* 'unixtime' in milliseconds. */
     // ustime_t ustime;            /* 'unixtime' in microseconds. */
-    // size_t blocking_op_nesting; /* Nesting level of blocking operation, used to reset blocked_last_cron. */
-    // long long blocked_last_cron; /* Indicate the mstime of the last time we did cron jobs from a blocking operation */
+    size_t blocking_op_nesting; /* Nesting level of blocking operation, used to reset blocked_last_cron. */
+    long long blocked_last_cron; /* Indicate the mstime of the last time we did cron jobs from a blocking operation */
     // /* Pubsub */
     // dict *pubsub_channels;  /* Map channels to list of subscribed clients */
     // dict *pubsub_patterns;  /* A dict of pubsub_patterns */
@@ -1078,9 +1116,9 @@ struct redisServer {
     // int acl_pubsub_default;      /* Default ACL pub/sub channels flag */
     // aclInfo acl_info; /* ACL info */
     // /* Assert & bug reporting */
-    // int watchdog_period;  /* Software watchdog period in ms. 0 = off */
+    int watchdog_period;  /* Software watchdog period in ms. 0 = off */
     // /* System hardware info */
-    // size_t system_memory_size;  /* Total memory in system as reported by OS */
+    size_t system_memory_size;  /* Total memory in system as reported by OS */
     // /* TLS Configuration */
     int tls_cluster;
     // int tls_replication;
@@ -1106,7 +1144,7 @@ struct redisServer {
     // long reply_buffer_peak_reset_time; /* The amount of time (in milliseconds) to wait between reply buffer peak resets */
     // int reply_buffer_resizing_enabled; /* Is reply buffer resizing enabled (1 by default) */
     // /* Local environment */
-    // char *locale_collate;
+    char *locale_collate;
 };
 
 /* Global vars */
@@ -1127,6 +1165,16 @@ void _serverLog(int level, const char *fmt, ...);
         printf("serverLog");\
         _serverLog(level, __VA_ARGS__);\
     } while(0)
+
+
+/* Anti-warning macro... */
+#define UNUSED(V) ((void) V)
+
+/* Using the following macro you can run code inside serverCron() with the
+ * specified period, specified in milliseconds.
+ * The actual resolution depends on server.hz. */
+#define run_with_period(_ms_) if (((_ms_) <= 1000/server.hz) || !(server.cronloops%((_ms_)/(1000/server.hz))))
+
 
 void getRandomBytes(unsigned char *p, size_t len);
  
@@ -1264,6 +1312,12 @@ struct redisCommand *lookupCommandBySdsLogic(dict *commands, sds s);
 struct redisCommand *lookupCommandBySds(sds s);
 int ACLAppendUserForLoading(sds *argv, int argc, int *argc_err);
 const char *ACLSetUserStringError(void);
+robj *createObject(int type, void *ptr);
+/* evict.c -- maxmemory handling and LRU eviction. */
+#define LFU_INIT_VAL 5
+void evictionPoolAlloc(void);
+void watchdogScheduleSignal(int period);
+void sigsegvHandler(int sig, siginfo_t *info, void *secret);
 
 
 #include "rdb.h"

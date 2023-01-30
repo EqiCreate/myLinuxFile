@@ -64,39 +64,39 @@
 #endif
 
 
-// aeEventLoop *aeCreateEventLoop(int setsize) {
-//     aeEventLoop *eventLoop;
-//     int i;
+aeEventLoop *aeCreateEventLoop(int setsize) {
+    aeEventLoop *eventLoop;
+    int i;
 
-//     monotonicInit();    /* just in case the calling app didn't initialize */
+    monotonicInit();    /* just in case the calling app didn't initialize */
 
-//     if ((eventLoop = zmalloc(sizeof(*eventLoop))) == NULL) goto err;
-//     eventLoop->events = zmalloc(sizeof(aeFileEvent)*setsize);
-//     eventLoop->fired = zmalloc(sizeof(aeFiredEvent)*setsize);
-//     if (eventLoop->events == NULL || eventLoop->fired == NULL) goto err;
-//     eventLoop->setsize = setsize;
-//     eventLoop->timeEventHead = NULL;
-//     eventLoop->timeEventNextId = 0;
-//     eventLoop->stop = 0;
-//     eventLoop->maxfd = -1;
-//     eventLoop->beforesleep = NULL;
-//     eventLoop->aftersleep = NULL;
-//     eventLoop->flags = 0;
-//     if (aeApiCreate(eventLoop) == -1) goto err;
-//     /* Events with mask == AE_NONE are not set. So let's initialize the
-//      * vector with it. */
-//     for (i = 0; i < setsize; i++)
-//         eventLoop->events[i].mask = AE_NONE;
-//     return eventLoop;
+    if ((eventLoop = zmalloc(sizeof(*eventLoop))) == NULL) goto err;
+    eventLoop->events = zmalloc(sizeof(aeFileEvent)*setsize);
+    eventLoop->fired = zmalloc(sizeof(aeFiredEvent)*setsize);
+    if (eventLoop->events == NULL || eventLoop->fired == NULL) goto err;
+    eventLoop->setsize = setsize;
+    eventLoop->timeEventHead = NULL;
+    eventLoop->timeEventNextId = 0;
+    eventLoop->stop = 0;
+    eventLoop->maxfd = -1;
+    eventLoop->beforesleep = NULL;
+    eventLoop->aftersleep = NULL;
+    eventLoop->flags = 0;
+    if (aeApiCreate(eventLoop) == -1) goto err;
+    /* Events with mask == AE_NONE are not set. So let's initialize the
+     * vector with it. */
+    for (i = 0; i < setsize; i++)
+        eventLoop->events[i].mask = AE_NONE;
+    return eventLoop;
 
-// err:
-//     if (eventLoop) {
-//         zfree(eventLoop->events);
-//         zfree(eventLoop->fired);
-//         zfree(eventLoop);
-//     }
-//     return NULL;
-// }
+err:
+    if (eventLoop) {
+        zfree(eventLoop->events);
+        zfree(eventLoop->fired);
+        zfree(eventLoop);
+    }
+    return NULL;
+}
 
 // /* Return the current set size. */
 // int aeGetSetSize(aeEventLoop *eventLoop) {
@@ -212,28 +212,28 @@
 //     return fe->mask;
 // }
 
-// long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
-//         aeTimeProc *proc, void *clientData,
-//         aeEventFinalizerProc *finalizerProc)
-// {
-//     long long id = eventLoop->timeEventNextId++;
-//     aeTimeEvent *te;
+long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
+        aeTimeProc *proc, void *clientData,
+        aeEventFinalizerProc *finalizerProc)
+{
+    long long id = eventLoop->timeEventNextId++;
+    aeTimeEvent *te;
 
-//     te = zmalloc(sizeof(*te));
-//     if (te == NULL) return AE_ERR;
-//     te->id = id;
-//     te->when = getMonotonicUs() + milliseconds * 1000;
-//     te->timeProc = proc;
-//     te->finalizerProc = finalizerProc;
-//     te->clientData = clientData;
-//     te->prev = NULL;
-//     te->next = eventLoop->timeEventHead;
-//     te->refcount = 0;
-//     if (te->next)
-//         te->next->prev = te;
-//     eventLoop->timeEventHead = te;
-//     return id;
-// }
+    te = zmalloc(sizeof(*te));
+    if (te == NULL) return AE_ERR;
+    te->id = id;
+    te->when = getMonotonicUs() + milliseconds * 1000;
+    te->timeProc = proc;
+    te->finalizerProc = finalizerProc;
+    // te->clientData = clientData;
+    te->prev = NULL;
+    te->next = eventLoop->timeEventHead;
+    te->refcount = 0;
+    if (te->next)
+        te->next->prev = te;
+    eventLoop->timeEventHead = te;
+    return id;
+}
 
 // int aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id)
 // {
@@ -508,10 +508,10 @@ void aeMain(aeEventLoop *eventLoop) {
 //     return aeApiName();
 // }
 
-// void aeSetBeforeSleepProc(aeEventLoop *eventLoop, aeBeforeSleepProc *beforesleep) {
-//     eventLoop->beforesleep = beforesleep;
-// }
+void aeSetBeforeSleepProc(aeEventLoop *eventLoop, aeBeforeSleepProc *beforesleep) {
+    eventLoop->beforesleep = beforesleep;
+}
 
-// void aeSetAfterSleepProc(aeEventLoop *eventLoop, aeBeforeSleepProc *aftersleep) {
-//     eventLoop->aftersleep = aftersleep;
-// }
+void aeSetAfterSleepProc(aeEventLoop *eventLoop, aeBeforeSleepProc *aftersleep) {
+    eventLoop->aftersleep = aftersleep;
+}

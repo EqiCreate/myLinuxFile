@@ -6,9 +6,38 @@
 #include <sys/stat.h>
 
 #include "Main/mt19937-64.h"
+#include <signal.h>
+#include <sys/wait.h>
+#include <errno.h>
+#include <assert.h>
+#include <ctype.h>
+#include <stdarg.h>
+#include <arpa/inet.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <sys/uio.h>
+#include <sys/un.h>
+#include <limits.h>
+#include <float.h>
+#include <math.h>
+#include <sys/utsname.h>
+#include <locale.h>
+#include <sys/socket.h>
+
+#ifdef __linux__
+#include <sys/mman.h>
+#endif
+
+#if defined(HAVE_SYSCTL_KIPC_SOMAXCONN) || defined(HAVE_SYSCTL_KERN_SOMAXCONN)
+#include <sys/sysctl.h>
+#endif
+
 // #include "functions.h"
 
-
+struct sharedObjectsStruct shared;
 struct redisCommand *lookupSubcommand(struct redisCommand *container, sds sub_name) {
     return dictFetchValue(container->subcommands_dict, sub_name);
 }
@@ -348,7 +377,6 @@ void serverLogRaw(int level, const char *msg)
                 (int)getpid(), role_char, buf, c[level], msg);
     }
     fflush(fp);
-
     if (!log_to_stdout)
         fclose(fp);
     if (server.syslog_enabled)
@@ -366,7 +394,7 @@ void _serverLog(int level, const char *fmt, ...)
     // vsnprintf(msg, sizeof(msg), fmt, ap);
     // va_end(ap);
     // serverLogRaw(level,msg);
-
+    
     int level_t = (int)(1 << 10);
     serverLogRaw(level_t, "test");
 }
@@ -377,6 +405,930 @@ void redisOutOfMemoryHandler(size_t allocation_size)
     // serverPanic("Redis aborting for OUT OF MEMORY. Allocating %zu bytes!",
     //     allocation_size);
 }
+
+#pragma region 
+
+/* Make the thread killable at any time, so that kill threads functions
+ * can work reliably (default cancelability type is PTHREAD_CANCEL_DEFERRED).
+ * Needed for pthread_cancel used by the fast memory test used by the crash report. */
+void makeThreadKillable(void) {
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+}
+
+
+/* Log a fixed message without printf-alike capabilities, in a way that is
+ * safe to call from a signal handler.
+ *
+ * We actually use this only for signals that are not fatal from the point
+ * of view of Redis. Signals that are going to kill the server anyway and
+ * where we need printf-alike features are served by serverLog(). */
+void serverLogFromHandler(int level, const char *msg) {
+    int fd;
+    int log_to_stdout = server.logfile[0] == '\0';
+    char buf[64];
+
+    if ((level&0xff) < server.verbosity || (log_to_stdout && server.daemonize))
+        return;
+    fd = log_to_stdout ? STDOUT_FILENO :
+                         open(server.logfile, O_APPEND|O_CREAT|O_WRONLY, 0644);
+    if (fd == -1) return;
+    ll2string(buf,sizeof(buf),getpid());
+    if (write(fd,buf,strlen(buf)) == -1) goto err;
+    if (write(fd,":signal-handler (",17) == -1) goto err;
+    ll2string(buf,sizeof(buf),time(NULL));
+    if (write(fd,buf,strlen(buf)) == -1) goto err;
+    if (write(fd,") ",2) == -1) goto err;
+    if (write(fd,msg,strlen(msg)) == -1) goto err;
+    if (write(fd,"\n",1) == -1) goto err;
+err:
+    if (!log_to_stdout) close(fd);
+}
+static void sigShutdownHandler(int sig) {
+    char *msg;
+
+    switch (sig) {
+    case SIGINT:
+        msg = "Received SIGINT scheduling shutdown...";
+        break;
+    case SIGTERM:
+        msg = "Received SIGTERM scheduling shutdown...";
+        break;
+    default:
+        msg = "Received shutdown signal, scheduling shutdown...";
+    };
+
+    /* SIGINT is often delivered via Ctrl+C in an interactive session.
+     * If we receive the signal the second time, we interpret this as
+     * the user really wanting to quit ASAP without waiting to persist
+     * on disk and without waiting for lagging replicas. */
+    if (server.shutdown_asap && sig == SIGINT) {
+        serverLogFromHandler(LL_WARNING, "You insist... exiting now.");
+        // rdbRemoveTempFile(getpid(), 1);
+        exit(1); /* Exit with an error since this was not a clean shutdown. */
+    } else if (server.loading) {
+        msg = "Received shutdown signal during loading, scheduling shutdown.";
+    }
+
+    serverLogFromHandler(LL_WARNING, msg);
+    server.shutdown_asap = 1;
+    server.last_sig_received = sig;
+}
+
+void setupSignalHandlers(void) {
+    struct sigaction act;
+
+    /* When the SA_SIGINFO flag is set in sa_flags then sa_sigaction is used.
+     * Otherwise, sa_handler is used. */
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = 0;
+    act.sa_handler = sigShutdownHandler;
+    sigaction(SIGTERM, &act, NULL);
+    sigaction(SIGINT, &act, NULL);
+
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = SA_NODEFER | SA_RESETHAND | SA_SIGINFO;
+    act.sa_sigaction = sigsegvHandler;
+    if(server.crashlog_enabled) {
+        sigaction(SIGSEGV, &act, NULL);
+        sigaction(SIGBUS, &act, NULL);
+        sigaction(SIGFPE, &act, NULL);
+        sigaction(SIGILL, &act, NULL);
+        sigaction(SIGABRT, &act, NULL);
+    }
+    return;
+}
+
+void createSharedObjects(void) {
+    int j;
+
+    /* Shared command responses */
+    shared.ok = createObject(OBJ_STRING,sdsnew("+OK\r\n"));
+    // shared.emptybulk = createObject(OBJ_STRING,sdsnew("$0\r\n\r\n"));
+    // shared.czero = createObject(OBJ_STRING,sdsnew(":0\r\n"));
+    // shared.cone = createObject(OBJ_STRING,sdsnew(":1\r\n"));
+    // shared.emptyarray = createObject(OBJ_STRING,sdsnew("*0\r\n"));
+    // shared.pong = createObject(OBJ_STRING,sdsnew("+PONG\r\n"));
+    // shared.queued = createObject(OBJ_STRING,sdsnew("+QUEUED\r\n"));
+    // shared.emptyscan = createObject(OBJ_STRING,sdsnew("*2\r\n$1\r\n0\r\n*0\r\n"));
+    // shared.space = createObject(OBJ_STRING,sdsnew(" "));
+    // shared.plus = createObject(OBJ_STRING,sdsnew("+"));
+
+    // /* Shared command error responses */
+    // shared.wrongtypeerr = createObject(OBJ_STRING,sdsnew(
+    //     "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"));
+    // shared.err = createObject(OBJ_STRING,sdsnew("-ERR\r\n"));
+    // shared.nokeyerr = createObject(OBJ_STRING,sdsnew(
+    //     "-ERR no such key\r\n"));
+    // shared.syntaxerr = createObject(OBJ_STRING,sdsnew(
+    //     "-ERR syntax error\r\n"));
+    // shared.sameobjecterr = createObject(OBJ_STRING,sdsnew(
+    //     "-ERR source and destination objects are the same\r\n"));
+    // shared.outofrangeerr = createObject(OBJ_STRING,sdsnew(
+    //     "-ERR index out of range\r\n"));
+    // shared.noscripterr = createObject(OBJ_STRING,sdsnew(
+    //     "-NOSCRIPT No matching script. Please use EVAL.\r\n"));
+    // shared.loadingerr = createObject(OBJ_STRING,sdsnew(
+    //     "-LOADING Redis is loading the dataset in memory\r\n"));
+    // shared.slowevalerr = createObject(OBJ_STRING,sdsnew(
+    //     "-BUSY Redis is busy running a script. You can only call SCRIPT KILL or SHUTDOWN NOSAVE.\r\n"));
+    // shared.slowscripterr = createObject(OBJ_STRING,sdsnew(
+    //     "-BUSY Redis is busy running a script. You can only call FUNCTION KILL or SHUTDOWN NOSAVE.\r\n"));
+    // shared.slowmoduleerr = createObject(OBJ_STRING,sdsnew(
+    //     "-BUSY Redis is busy running a module command.\r\n"));
+    // shared.masterdownerr = createObject(OBJ_STRING,sdsnew(
+    //     "-MASTERDOWN Link with MASTER is down and replica-serve-stale-data is set to 'no'.\r\n"));
+    // shared.bgsaveerr = createObject(OBJ_STRING,sdsnew(
+    //     "-MISCONF Redis is configured to save RDB snapshots, but it's currently unable to persist to disk. Commands that may modify the data set are disabled, because this instance is configured to report errors during writes if RDB snapshotting fails (stop-writes-on-bgsave-error option). Please check the Redis logs for details about the RDB error.\r\n"));
+    // shared.roslaveerr = createObject(OBJ_STRING,sdsnew(
+    //     "-READONLY You can't write against a read only replica.\r\n"));
+    // shared.noautherr = createObject(OBJ_STRING,sdsnew(
+    //     "-NOAUTH Authentication required.\r\n"));
+    // shared.oomerr = createObject(OBJ_STRING,sdsnew(
+    //     "-OOM command not allowed when used memory > 'maxmemory'.\r\n"));
+    // shared.execaborterr = createObject(OBJ_STRING,sdsnew(
+    //     "-EXECABORT Transaction discarded because of previous errors.\r\n"));
+    // shared.noreplicaserr = createObject(OBJ_STRING,sdsnew(
+    //     "-NOREPLICAS Not enough good replicas to write.\r\n"));
+    // shared.busykeyerr = createObject(OBJ_STRING,sdsnew(
+    //     "-BUSYKEY Target key name already exists.\r\n"));
+
+    // /* The shared NULL depends on the protocol version. */
+    // shared.null[0] = NULL;
+    // shared.null[1] = NULL;
+    // shared.null[2] = createObject(OBJ_STRING,sdsnew("$-1\r\n"));
+    // shared.null[3] = createObject(OBJ_STRING,sdsnew("_\r\n"));
+
+    // shared.nullarray[0] = NULL;
+    // shared.nullarray[1] = NULL;
+    // shared.nullarray[2] = createObject(OBJ_STRING,sdsnew("*-1\r\n"));
+    // shared.nullarray[3] = createObject(OBJ_STRING,sdsnew("_\r\n"));
+
+    // shared.emptymap[0] = NULL;
+    // shared.emptymap[1] = NULL;
+    // shared.emptymap[2] = createObject(OBJ_STRING,sdsnew("*0\r\n"));
+    // shared.emptymap[3] = createObject(OBJ_STRING,sdsnew("%0\r\n"));
+
+    // shared.emptyset[0] = NULL;
+    // shared.emptyset[1] = NULL;
+    // shared.emptyset[2] = createObject(OBJ_STRING,sdsnew("*0\r\n"));
+    // shared.emptyset[3] = createObject(OBJ_STRING,sdsnew("~0\r\n"));
+
+    // for (j = 0; j < PROTO_SHARED_SELECT_CMDS; j++) {
+    //     char dictid_str[64];
+    //     int dictid_len;
+
+    //     dictid_len = ll2string(dictid_str,sizeof(dictid_str),j);
+    //     shared.select[j] = createObject(OBJ_STRING,
+    //         sdscatprintf(sdsempty(),
+    //             "*2\r\n$6\r\nSELECT\r\n$%d\r\n%s\r\n",
+    //             dictid_len, dictid_str));
+    // }
+    // shared.messagebulk = createStringObject("$7\r\nmessage\r\n",13);
+    // shared.pmessagebulk = createStringObject("$8\r\npmessage\r\n",14);
+    // shared.subscribebulk = createStringObject("$9\r\nsubscribe\r\n",15);
+    // shared.unsubscribebulk = createStringObject("$11\r\nunsubscribe\r\n",18);
+    // shared.ssubscribebulk = createStringObject("$10\r\nssubscribe\r\n", 17);
+    // shared.sunsubscribebulk = createStringObject("$12\r\nsunsubscribe\r\n", 19);
+    // shared.smessagebulk = createStringObject("$8\r\nsmessage\r\n", 14);
+    // shared.psubscribebulk = createStringObject("$10\r\npsubscribe\r\n",17);
+    // shared.punsubscribebulk = createStringObject("$12\r\npunsubscribe\r\n",19);
+
+    // /* Shared command names */
+    // shared.del = createStringObject("DEL",3);
+    // shared.unlink = createStringObject("UNLINK",6);
+    // shared.rpop = createStringObject("RPOP",4);
+    // shared.lpop = createStringObject("LPOP",4);
+    // shared.lpush = createStringObject("LPUSH",5);
+    // shared.rpoplpush = createStringObject("RPOPLPUSH",9);
+    // shared.lmove = createStringObject("LMOVE",5);
+    // shared.blmove = createStringObject("BLMOVE",6);
+    // shared.zpopmin = createStringObject("ZPOPMIN",7);
+    // shared.zpopmax = createStringObject("ZPOPMAX",7);
+    // shared.multi = createStringObject("MULTI",5);
+    // shared.exec = createStringObject("EXEC",4);
+    // shared.hset = createStringObject("HSET",4);
+    // shared.srem = createStringObject("SREM",4);
+    // shared.xgroup = createStringObject("XGROUP",6);
+    // shared.xclaim = createStringObject("XCLAIM",6);
+    // shared.script = createStringObject("SCRIPT",6);
+    // shared.replconf = createStringObject("REPLCONF",8);
+    // shared.pexpireat = createStringObject("PEXPIREAT",9);
+    // shared.pexpire = createStringObject("PEXPIRE",7);
+    // shared.persist = createStringObject("PERSIST",7);
+    // shared.set = createStringObject("SET",3);
+    // shared.eval = createStringObject("EVAL",4);
+
+    // /* Shared command argument */
+    // shared.left = createStringObject("left",4);
+    // shared.right = createStringObject("right",5);
+    // shared.pxat = createStringObject("PXAT", 4);
+    // shared.time = createStringObject("TIME",4);
+    // shared.retrycount = createStringObject("RETRYCOUNT",10);
+    // shared.force = createStringObject("FORCE",5);
+    // shared.justid = createStringObject("JUSTID",6);
+    // shared.entriesread = createStringObject("ENTRIESREAD",11);
+    // shared.lastid = createStringObject("LASTID",6);
+    // shared.default_username = createStringObject("default",7);
+    // shared.ping = createStringObject("ping",4);
+    // shared.setid = createStringObject("SETID",5);
+    // shared.keepttl = createStringObject("KEEPTTL",7);
+    // shared.absttl = createStringObject("ABSTTL",6);
+    // shared.load = createStringObject("LOAD",4);
+    // shared.createconsumer = createStringObject("CREATECONSUMER",14);
+    // shared.getack = createStringObject("GETACK",6);
+    // shared.special_asterick = createStringObject("*",1);
+    // shared.special_equals = createStringObject("=",1);
+    // shared.redacted = makeObjectShared(createStringObject("(redacted)",10));
+
+    // for (j = 0; j < OBJ_SHARED_INTEGERS; j++) {
+    //     shared.integers[j] =
+    //         makeObjectShared(createObject(OBJ_STRING,(void*)(long)j));
+    //     shared.integers[j]->encoding = OBJ_ENCODING_INT;
+    // }
+    // for (j = 0; j < OBJ_SHARED_BULKHDR_LEN; j++) {
+    //     shared.mbulkhdr[j] = createObject(OBJ_STRING,
+    //         sdscatprintf(sdsempty(),"*%d\r\n",j));
+    //     shared.bulkhdr[j] = createObject(OBJ_STRING,
+    //         sdscatprintf(sdsempty(),"$%d\r\n",j));
+    //     shared.maphdr[j] = createObject(OBJ_STRING,
+    //         sdscatprintf(sdsempty(),"%%%d\r\n",j));
+    //     shared.sethdr[j] = createObject(OBJ_STRING,
+    //         sdscatprintf(sdsempty(),"~%d\r\n",j));
+    // }
+    // /* The following two shared objects, minstring and maxstring, are not
+    //  * actually used for their value but as a special object meaning
+    //  * respectively the minimum possible string and the maximum possible
+    //  * string in string comparisons for the ZRANGEBYLEX command. */
+    // shared.minstring = sdsnew("minstring");
+    // shared.maxstring = sdsnew("maxstring");
+}
+
+/* This function will try to raise the max number of open files accordingly to
+ * the configured max number of clients. It also reserves a number of file
+ * descriptors (CONFIG_MIN_RESERVED_FDS) for extra operations of
+ * persistence, listening sockets, log files and so forth.
+ *
+ * If it will not be possible to set the limit accordingly to the configured
+ * max number of clients, the function will do the reverse setting
+ * server.maxclients to the value that we can actually handle. */
+void adjustOpenFilesLimit(void) {
+}
+
+/* This is our timer interrupt, called server.hz times per second.
+ * Here is where we do a number of things that need to be done asynchronously.
+ * For instance:
+ *
+ * - Active expired keys collection (it is also performed in a lazy way on
+ *   lookup).
+ * - Software watchdog.
+ * - Update some statistic.
+ * - Incremental rehashing of the DBs hash tables.
+ * - Triggering BGSAVE / AOF rewrite, and handling of terminated children.
+ * - Clients timeout of different kinds.
+ * - Replication reconnection.
+ * - Many more...
+ *
+ * Everything directly called here will be called server.hz times per second,
+ * so in order to throttle execution of things we want to do less frequently
+ * a macro is used: run_with_period(milliseconds) { .... }
+ */
+
+int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
+    int j;
+    UNUSED(eventLoop);
+    UNUSED(id);
+    UNUSED(clientData);
+
+    /* Software watchdog: deliver the SIGALRM that will reach the signal
+     * handler if we don't return here fast enough. */
+    if (server.watchdog_period) watchdogScheduleSignal(server.watchdog_period);
+
+    // server.hz = server.config_hz;
+
+    server.hz = server.config_hz+1;
+    /* Adapt the server.hz value to the number of configured clients. If we have
+     * many clients, we want to call serverCron() with an higher frequency. */
+    // if (server.dynamic_hz) {
+    //     while (listLength(server.clients) / server.hz >
+    //            MAX_CLIENTS_PER_CLOCK_TICK)
+    //     {
+    //         server.hz *= 2;
+    //         if (server.hz > CONFIG_MAX_HZ) {
+    //             server.hz = CONFIG_MAX_HZ;
+    //             break;
+    //         }
+    //     }
+    // }
+
+    /* for debug purposes: skip actual cron work if pause_cron is on */
+    if (server.pause_cron) return 1000/server.hz;
+
+    // run_with_period(100) {
+    //     long long stat_net_input_bytes, stat_net_output_bytes;
+    //     long long stat_net_repl_input_bytes, stat_net_repl_output_bytes;
+    //     atomicGet(server.stat_net_input_bytes, stat_net_input_bytes);
+    //     atomicGet(server.stat_net_output_bytes, stat_net_output_bytes);
+    //     atomicGet(server.stat_net_repl_input_bytes, stat_net_repl_input_bytes);
+    //     atomicGet(server.stat_net_repl_output_bytes, stat_net_repl_output_bytes);
+
+    //     trackInstantaneousMetric(STATS_METRIC_COMMAND,server.stat_numcommands);
+    //     trackInstantaneousMetric(STATS_METRIC_NET_INPUT,
+    //             stat_net_input_bytes + stat_net_repl_input_bytes);
+    //     trackInstantaneousMetric(STATS_METRIC_NET_OUTPUT,
+    //             stat_net_output_bytes + stat_net_repl_output_bytes);
+    //     trackInstantaneousMetric(STATS_METRIC_NET_INPUT_REPLICATION,
+    //                              stat_net_repl_input_bytes);
+    //     trackInstantaneousMetric(STATS_METRIC_NET_OUTPUT_REPLICATION,
+    //                              stat_net_repl_output_bytes);
+    // }
+
+    /* We have just LRU_BITS bits per object for LRU information.
+     * So we use an (eventually wrapping) LRU clock.
+     *
+     * Note that even if the counter wraps it's not a big problem,
+     * everything will still work but some object will appear younger
+     * to Redis. However for this to happen a given object should never be
+     * touched for all the time needed to the counter to wrap, which is
+     * not likely.
+     *
+     * Note that you can change the resolution altering the
+     * LRU_CLOCK_RESOLUTION define. */
+    // unsigned int lruclock = getLRUClock();
+    // atomicSet(server.lruclock,lruclock);
+
+    // cronUpdateMemoryStats();
+
+    /* We received a SIGTERM or SIGINT, shutting down here in a safe way, as it is
+     * not ok doing so inside the signal handler. */
+    // if (server.shutdown_asap && !isShutdownInitiated()) {
+    //     int shutdownFlags = SHUTDOWN_NOFLAGS;
+    //     if (server.last_sig_received == SIGINT && server.shutdown_on_sigint)
+    //         shutdownFlags = server.shutdown_on_sigint;
+    //     else if (server.last_sig_received == SIGTERM && server.shutdown_on_sigterm)
+    //         shutdownFlags = server.shutdown_on_sigterm;
+
+    //     if (prepareForShutdown(shutdownFlags) == C_OK) exit(0);
+    // } else if (isShutdownInitiated()) {
+    //     if (server.mstime >= server.shutdown_mstime || isReadyToShutdown()) {
+    //         if (finishShutdown() == C_OK) exit(0);
+    //         /* Shutdown failed. Continue running. An error has been logged. */
+    //     }
+    // }
+
+    /* Show some info about non-empty databases */
+    if (server.verbosity <= LL_VERBOSE) {
+        run_with_period(5000) {
+            // for (j = 0; j < server.dbnum; j++) {
+            //     long long size, used, vkeys;
+
+            //     size = dictSlots(server.db[j].dict);
+            //     used = dictSize(server.db[j].dict);
+            //     vkeys = dictSize(server.db[j].expires);
+            //     if (used || vkeys) {
+            //         serverLog(LL_VERBOSE,"DB %d: %lld keys (%lld volatile) in %lld slots HT.",j,used,vkeys,size);
+            //     }
+            // }
+        }
+    }
+
+    /* Show information about connected clients */
+    if (!server.sentinel_mode) {
+        run_with_period(5000) {
+            // serverLog(LL_DEBUG,
+            //     "%lu clients connected (%lu replicas), %zu bytes in use",
+            //     listLength(server.clients)-listLength(server.slaves),
+            //     listLength(server.slaves),
+            //     zmalloc_used_memory());
+        }
+    }
+
+    /* We need to do a few operations on clients asynchronously. */
+    // clientsCron();
+
+    /* Handle background operations on Redis databases. */
+    // databasesCron();
+
+    /* Start a scheduled AOF rewrite if this was requested by the user while
+     * a BGSAVE was in progress. */
+    // if (!hasActiveChildProcess() &&
+    //     server.aof_rewrite_scheduled &&
+    //     !aofRewriteLimited())
+    // {
+    //     rewriteAppendOnlyFileBackground();
+    // }
+
+    /* Check if a background saving or AOF rewrite in progress terminated. */
+    // if (hasActiveChildProcess() || ldbPendingChildren())
+    // {
+    //     run_with_period(1000) receiveChildInfo();
+    //     checkChildrenDone();
+    // } else {
+    //     /* If there is not a background saving/rewrite in progress check if
+    //      * we have to save/rewrite now. */
+    //     for (j = 0; j < server.saveparamslen; j++) {
+    //         struct saveparam *sp = server.saveparams+j;
+
+    //         /* Save if we reached the given amount of changes,
+    //          * the given amount of seconds, and if the latest bgsave was
+    //          * successful or if, in case of an error, at least
+    //          * CONFIG_BGSAVE_RETRY_DELAY seconds already elapsed. */
+    //         if (server.dirty >= sp->changes &&
+    //             server.unixtime-server.lastsave > sp->seconds &&
+    //             (server.unixtime-server.lastbgsave_try >
+    //              CONFIG_BGSAVE_RETRY_DELAY ||
+    //              server.lastbgsave_status == C_OK))
+    //         {
+    //             serverLog(LL_NOTICE,"%d changes in %d seconds. Saving...",
+    //                 sp->changes, (int)sp->seconds);
+    //             rdbSaveInfo rsi, *rsiptr;
+    //             rsiptr = rdbPopulateSaveInfo(&rsi);
+    //             rdbSaveBackground(SLAVE_REQ_NONE,server.rdb_filename,rsiptr);
+    //             break;
+    //         }
+    //     }
+
+    //     /* Trigger an AOF rewrite if needed. */
+    //     if (server.aof_state == AOF_ON &&
+    //         !hasActiveChildProcess() &&
+    //         server.aof_rewrite_perc &&
+    //         server.aof_current_size > server.aof_rewrite_min_size)
+    //     {
+    //         long long base = server.aof_rewrite_base_size ?
+    //             server.aof_rewrite_base_size : 1;
+    //         long long growth = (server.aof_current_size*100/base) - 100;
+    //         if (growth >= server.aof_rewrite_perc && !aofRewriteLimited()) {
+    //             serverLog(LL_NOTICE,"Starting automatic rewriting of AOF on %lld%% growth",growth);
+    //             rewriteAppendOnlyFileBackground();
+    //         }
+    //     }
+    // }
+    /* Just for the sake of defensive programming, to avoid forgetting to
+     * call this function when needed. */
+    // updateDictResizePolicy();
+
+
+    /* AOF postponed flush: Try at every cron cycle if the slow fsync
+     * completed. */
+    // if ((server.aof_state == AOF_ON || server.aof_state == AOF_WAIT_REWRITE) &&
+    //     server.aof_flush_postponed_start)
+    // {
+    //     flushAppendOnlyFile(0);
+    // }
+
+    /* AOF write errors: in this case we have a buffer to flush as well and
+     * clear the AOF error in case of success to make the DB writable again,
+     * however to try every second is enough in case of 'hz' is set to
+     * a higher frequency. */
+    // run_with_period(1000) {
+    //     if ((server.aof_state == AOF_ON || server.aof_state == AOF_WAIT_REWRITE) &&
+    //         server.aof_last_write_status == C_ERR) 
+    //         {
+    //             flushAppendOnlyFile(0);
+    //         }
+    // }
+
+    /* Clear the paused actions state if needed. */
+    // updatePausedActions();
+
+    /* Replication cron function -- used to reconnect to master,
+     * detect transfer failures, start background RDB transfers and so forth. 
+     * 
+     * If Redis is trying to failover then run the replication cron faster so
+     * progress on the handshake happens more quickly. */
+    // if (server.failover_state != NO_FAILOVER) {
+    //     run_with_period(100) replicationCron();
+    // } else {
+    //     run_with_period(1000) replicationCron();
+    // }
+
+    /* Run the Redis Cluster cron. */
+    // run_with_period(100) {
+    //     if (server.cluster_enabled) clusterCron();
+    // }
+
+    /* Run the Sentinel timer if we are in sentinel mode. */
+    // if (server.sentinel_mode) sentinelTimer();
+
+    /* Cleanup expired MIGRATE cached sockets. */
+    // run_with_period(1000) {
+    //     migrateCloseTimedoutSockets();
+    // }
+
+    /* Stop the I/O threads if we don't have enough pending work. */
+    // stopThreadedIOIfNeeded();
+
+    /* Resize tracking keys table if needed. This is also done at every
+     * command execution, but we want to be sure that if the last command
+     * executed changes the value via CONFIG SET, the server will perform
+     * the operation even if completely idle. */
+    // if (server.tracking_clients) trackingLimitUsedSlots();
+
+    /* Start a scheduled BGSAVE if the corresponding flag is set. This is
+     * useful when we are forced to postpone a BGSAVE because an AOF
+     * rewrite is in progress.
+     *
+     * Note: this code must be after the replicationCron() call above so
+     * make sure when refactoring this file to keep this order. This is useful
+     * because we want to give priority to RDB savings for replication. */
+    // if (!hasActiveChildProcess() &&
+    //     server.rdb_bgsave_scheduled &&
+    //     (server.unixtime-server.lastbgsave_try > CONFIG_BGSAVE_RETRY_DELAY ||
+    //      server.lastbgsave_status == C_OK))
+    // {
+    //     rdbSaveInfo rsi, *rsiptr;
+    //     rsiptr = rdbPopulateSaveInfo(&rsi);
+    //     if (rdbSaveBackground(SLAVE_REQ_NONE,server.rdb_filename,rsiptr) == C_OK)
+    //         server.rdb_bgsave_scheduled = 0;
+    // }
+
+    // run_with_period(100) {
+    //     if (moduleCount()) modulesCron();
+    // }
+
+    /* Fire the cron loop modules event. */
+    // RedisModuleCronLoopV1 ei = {REDISMODULE_CRON_LOOP_VERSION,server.hz};
+    // moduleFireServerEvent(REDISMODULE_EVENT_CRON_LOOP,
+    //                       0,
+    //                       &ei);
+
+    server.cronloops++;
+    // return 1000/server.hz;
+    return 1000/server.hz+1;
+
+}
+
+/* This function gets called every time Redis is entering the
+ * main loop of the event driven library, that is, before to sleep
+ * for ready file descriptors.
+ *
+ * Note: This function is (currently) called from two functions:
+ * 1. aeMain - The main server loop
+ * 2. processEventsWhileBlocked - Process clients during RDB/AOF load
+ *
+ * If it was called from processEventsWhileBlocked we don't want
+ * to perform all actions (For example, we don't want to expire
+ * keys), but we do need to perform some actions.
+ *
+ * The most important is freeClientsInAsyncFreeQueue but we also
+ * call some other low-risk functions. */
+void beforeSleep(struct aeEventLoop *eventLoop) {
+    UNUSED(eventLoop);
+
+    size_t zmalloc_used = zmalloc_used_memory();
+    if (zmalloc_used > server.stat_peak_memory)
+        server.stat_peak_memory = zmalloc_used;
+
+    // /* Just call a subset of vital functions in case we are re-entering
+    //  * the event loop from processEventsWhileBlocked(). Note that in this
+    //  * case we keep track of the number of events we are processing, since
+    //  * processEventsWhileBlocked() wants to stop ASAP if there are no longer
+    //  * events to handle. */
+    // if (ProcessingEventsWhileBlocked) {
+    //     uint64_t processed = 0;
+    //     processed += handleClientsWithPendingReadsUsingThreads();
+    //     processed += connTypeProcessPendingData();
+    //     if (server.aof_state == AOF_ON || server.aof_state == AOF_WAIT_REWRITE)
+    //         flushAppendOnlyFile(0);
+    //     processed += handleClientsWithPendingWrites();
+    //     processed += freeClientsInAsyncFreeQueue();
+    //     server.events_processed_while_blocked += processed;
+    //     return;
+    // }
+
+    // /* Handle precise timeouts of blocked clients. */
+    // handleBlockedClientsTimeout();
+
+    // /* We should handle pending reads clients ASAP after event loop. */
+    // handleClientsWithPendingReadsUsingThreads();
+
+    // /* Handle pending data(typical TLS). (must be done before flushAppendOnlyFile) */
+    // connTypeProcessPendingData();
+
+    // /* If any connection type(typical TLS) still has pending unread data don't sleep at all. */
+    // aeSetDontWait(server.el, connTypeHasPendingData());
+
+    // /* Call the Redis Cluster before sleep function. Note that this function
+    //  * may change the state of Redis Cluster (from ok to fail or vice versa),
+    //  * so it's a good idea to call it before serving the unblocked clients
+    //  * later in this function. */
+    // if (server.cluster_enabled) clusterBeforeSleep();
+
+    // /* Run a fast expire cycle (the called function will return
+    //  * ASAP if a fast cycle is not needed). */
+    // if (server.active_expire_enabled && server.masterhost == NULL)
+    //     activeExpireCycle(ACTIVE_EXPIRE_CYCLE_FAST);
+
+    // /* Unblock all the clients blocked for synchronous replication
+    //  * in WAIT. */
+    // if (listLength(server.clients_waiting_acks))
+    //     processClientsWaitingReplicas();
+
+    // /* Check if there are clients unblocked by modules that implement
+    //  * blocking commands. */
+    // if (moduleCount()) {
+    //     moduleFireServerEvent(REDISMODULE_EVENT_EVENTLOOP,
+    //                           REDISMODULE_SUBEVENT_EVENTLOOP_BEFORE_SLEEP,
+    //                           NULL);
+    //     moduleHandleBlockedClients();
+    // }
+
+    // /* Try to process pending commands for clients that were just unblocked. */
+    // if (listLength(server.unblocked_clients))
+    //     processUnblockedClients();
+
+    // /* Send all the slaves an ACK request if at least one client blocked
+    //  * during the previous event loop iteration. Note that we do this after
+    //  * processUnblockedClients(), so if there are multiple pipelined WAITs
+    //  * and the just unblocked WAIT gets blocked again, we don't have to wait
+    //  * a server cron cycle in absence of other event loop events. See #6623.
+    //  * 
+    //  * We also don't send the ACKs while clients are paused, since it can
+    //  * increment the replication backlog, they'll be sent after the pause
+    //  * if we are still the master. */
+    // if (server.get_ack_from_slaves && !isPausedActionsWithUpdate(PAUSE_ACTION_REPLICA)) {
+    //     sendGetackToReplicas();
+    //     server.get_ack_from_slaves = 0;
+    // }
+
+    // /* We may have received updates from clients about their current offset. NOTE:
+    //  * this can't be done where the ACK is received since failover will disconnect 
+    //  * our clients. */
+    // updateFailoverStatus();
+
+    // /* Since we rely on current_client to send scheduled invalidation messages
+    //  * we have to flush them after each command, so when we get here, the list
+    //  * must be empty. */
+    // serverAssert(listLength(server.tracking_pending_keys) == 0);
+
+    // /* Send the invalidation messages to clients participating to the
+    //  * client side caching protocol in broadcasting (BCAST) mode. */
+    // trackingBroadcastInvalidationMessages();
+
+    // /* Try to process blocked clients every once in while.
+    //  *
+    //  * Example: A module calls RM_SignalKeyAsReady from within a timer callback
+    //  * (So we don't visit processCommand() at all).
+    //  *
+    //  * must be done before flushAppendOnlyFile, in case of appendfsync=always,
+    //  * since the unblocked clients may write data. */
+    // handleClientsBlockedOnKeys();
+
+    // /* Write the AOF buffer on disk,
+    //  * must be done before handleClientsWithPendingWritesUsingThreads,
+    //  * in case of appendfsync=always. */
+    // if (server.aof_state == AOF_ON || server.aof_state == AOF_WAIT_REWRITE)
+    //     flushAppendOnlyFile(0);
+
+    // /* Handle writes with pending output buffers. */
+    // handleClientsWithPendingWritesUsingThreads();
+
+    // /* Close clients that need to be closed asynchronous */
+    // freeClientsInAsyncFreeQueue();
+
+    // /* Incrementally trim replication backlog, 10 times the normal speed is
+    //  * to free replication backlog as much as possible. */
+    // if (server.repl_backlog)
+    //     incrementalTrimReplicationBacklog(10*REPL_BACKLOG_TRIM_BLOCKS_PER_CALL);
+
+    // /* Disconnect some clients if they are consuming too much memory. */
+    // evictClients();
+
+    // /* Before we are going to sleep, let the threads access the dataset by
+    //  * releasing the GIL. Redis main thread will not touch anything at this
+    //  * time. */
+    // if (moduleCount()) moduleReleaseGIL();
+
+    /* Do NOT add anything below moduleReleaseGIL !!! */
+}
+
+/* This function is called immediately after the event loop multiplexing
+ * API returned, and the control is going to soon return to Redis by invoking
+ * the different events callbacks. */
+void afterSleep(struct aeEventLoop *eventLoop) {
+    UNUSED(eventLoop);
+
+    /* Update the time cache. */
+    // updateCachedTime(1);
+
+    // /* Do NOT add anything above moduleAcquireGIL !!! */
+
+    // /* Acquire the modules GIL so that their threads won't touch anything. */
+    // if (!ProcessingEventsWhileBlocked) {
+    //     if (moduleCount()) {
+    //         mstime_t latency;
+    //         latencyStartMonitor(latency);
+
+    //         moduleAcquireGIL();
+    //         moduleFireServerEvent(REDISMODULE_EVENT_EVENTLOOP,
+    //                               REDISMODULE_SUBEVENT_EVENTLOOP_AFTER_SLEEP,
+    //                               NULL);
+    //         latencyEndMonitor(latency);
+    //         latencyAddSampleIfNeeded("module-acquire-GIL",latency);
+    //     }
+    // }
+}
+
+
+void initServer(void) {
+    int j;
+
+    signal(SIGHUP, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
+    setupSignalHandlers();
+    makeThreadKillable();
+
+    if (server.syslog_enabled) {
+        openlog(server.syslog_ident, LOG_PID | LOG_NDELAY | LOG_NOWAIT,
+            server.syslog_facility);
+    }
+
+    /* Initialization after setting defaults from the config system. */
+    // server.aof_state = server.aof_enabled ? AOF_ON : AOF_OFF;
+    server.hz = server.config_hz;
+    server.pid = getpid();
+    server.in_fork_child = CHILD_TYPE_NONE;
+    server.main_thread_id = pthread_self();
+    // server.current_client = NULL;
+    // server.errors = raxNew();
+    server.in_nested_call = 0;
+    // server.clients = listCreate();
+    // server.clients_index = raxNew();
+    // server.clients_to_close = listCreate();
+    // server.slaves = listCreate();
+    // server.monitors = listCreate();
+    // server.clients_pending_write = listCreate();
+    // server.clients_pending_read = listCreate();
+    // server.clients_timeout_table = raxNew();
+    server.replication_allowed = 1;
+    // server.slaveseldb = -1; /* Force to emit the first SELECT command. */
+    // server.unblocked_clients = listCreate();
+    // server.ready_keys = listCreate();
+    // server.tracking_pending_keys = listCreate();
+    // server.clients_waiting_acks = listCreate();
+    // server.get_ack_from_slaves = 0;
+    server.paused_actions = 0;
+    // memset(server.client_pause_per_purpose, 0,
+    //        sizeof(server.client_pause_per_purpose));
+    // server.postponed_clients = listCreate();
+    server.events_processed_while_blocked = 0;
+    server.system_memory_size = zmalloc_get_memory_size();
+    server.blocked_last_cron = 0;
+    server.blocking_op_nesting = 0;
+    // server.thp_enabled = 0;
+    // server.cluster_drop_packet_filter = -1;
+    // server.reply_buffer_peak_reset_time = REPLY_BUFFER_DEFAULT_PEAK_RESET_TIME;
+    // server.reply_buffer_resizing_enabled = 1;
+    // resetReplicationBuffer();
+
+    /* Make sure the locale is set on startup based on the config file. */
+    // if (setlocale(LC_COLLATE,server.locale_collate) == NULL) {
+    //     serverLog(LL_WARNING, "Failed to configure LOCALE for invalid locale name.");
+    //     exit(1);
+    // }
+
+    // for (j = 0; j < CLIENT_MEM_USAGE_BUCKETS; j++) {
+    //     server.client_mem_usage_buckets[j].mem_usage_sum = 0;
+    //     server.client_mem_usage_buckets[j].clients = listCreate();
+    // }
+
+    createSharedObjects();
+    adjustOpenFilesLimit();
+    const char *clk_msg = monotonicInit();
+    serverLog(LL_NOTICE, "monotonic clock: %s", clk_msg);
+    server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
+    if (server.el == NULL) {
+        serverLog(LL_WARNING,
+            "Failed creating the event loop. Error message: '%s'",
+            strerror(errno));
+        exit(1);
+    }
+    // server.db = zmalloc(sizeof(redisDb)*server.dbnum);
+
+    /* Create the Redis databases, and initialize other internal state. */
+    // for (j = 0; j < server.dbnum; j++) {
+    //     server.db[j].dict = dictCreate(&dbDictType);
+    //     server.db[j].expires = dictCreate(&dbExpiresDictType);
+    //     server.db[j].expires_cursor = 0;
+    //     server.db[j].blocking_keys = dictCreate(&keylistDictType);
+    //     server.db[j].blocking_keys_unblock_on_nokey = dictCreate(&objectKeyPointerValueDictType);
+    //     server.db[j].ready_keys = dictCreate(&objectKeyPointerValueDictType);
+    //     server.db[j].watched_keys = dictCreate(&keylistDictType);
+    //     server.db[j].id = j;
+    //     server.db[j].avg_ttl = 0;
+    //     server.db[j].defrag_later = listCreate();
+    //     server.db[j].slots_to_keys = NULL; /* Set by clusterInit later on if necessary. */
+    //     listSetFreeMethod(server.db[j].defrag_later,(void (*)(void*))sdsfree);
+    // }
+    // evictionPoolAlloc(); /* Initialize the LRU keys pool. */
+    // server.pubsub_channels = dictCreate(&keylistDictType);
+    // server.pubsub_patterns = dictCreate(&keylistDictType);
+    // server.pubsubshard_channels = dictCreate(&keylistDictType);
+    // server.cronloops = 0;
+    // server.in_exec = 0;
+    // server.busy_module_yield_flags = BUSY_MODULE_YIELD_NONE;
+    // server.busy_module_yield_reply = NULL;
+    // server.core_propagates = 0;
+    // server.module_ctx_nesting = 0;
+    // server.client_pause_in_transaction = 0;
+    // server.child_pid = -1;
+    // server.child_type = CHILD_TYPE_NONE;
+    // server.rdb_child_type = RDB_CHILD_TYPE_NONE;
+    // server.rdb_pipe_conns = NULL;
+    // server.rdb_pipe_numconns = 0;
+    // server.rdb_pipe_numconns_writing = 0;
+    // server.rdb_pipe_buff = NULL;
+    // server.rdb_pipe_bufflen = 0;
+    // server.rdb_bgsave_scheduled = 0;
+    // server.child_info_pipe[0] = -1;
+    // server.child_info_pipe[1] = -1;
+    // server.child_info_nread = 0;
+    // server.aof_buf = sdsempty();
+    // server.lastsave = time(NULL); /* At startup we consider the DB saved. */
+    // server.lastbgsave_try = 0;    /* At startup we never tried to BGSAVE. */
+    // server.rdb_save_time_last = -1;
+    // server.rdb_save_time_start = -1;
+    // server.rdb_last_load_keys_expired = 0;
+    // server.rdb_last_load_keys_loaded = 0;
+    // server.dirty = 0;
+    // resetServerStats();
+    // /* A few stats we don't want to reset: server startup time, and peak mem. */
+    // server.stat_starttime = time(NULL);
+    // server.stat_peak_memory = 0;
+    // server.stat_current_cow_peak = 0;
+    // server.stat_current_cow_bytes = 0;
+    // server.stat_current_cow_updated = 0;
+    // server.stat_current_save_keys_processed = 0;
+    // server.stat_current_save_keys_total = 0;
+    // server.stat_rdb_cow_bytes = 0;
+    // server.stat_aof_cow_bytes = 0;
+    // server.stat_module_cow_bytes = 0;
+    // server.stat_module_progress = 0;
+    // for (int j = 0; j < CLIENT_TYPE_COUNT; j++)
+    //     server.stat_clients_type_memory[j] = 0;
+    // server.stat_cluster_links_memory = 0;
+    // server.cron_malloc_stats.zmalloc_used = 0;
+    // server.cron_malloc_stats.process_rss = 0;
+    // server.cron_malloc_stats.allocator_allocated = 0;
+    // server.cron_malloc_stats.allocator_active = 0;
+    // server.cron_malloc_stats.allocator_resident = 0;
+    // server.lastbgsave_status = C_OK;
+    // server.aof_last_write_status = C_OK;
+    // server.aof_last_write_errno = 0;
+    // server.repl_good_slaves_count = 0;
+    // server.last_sig_received = 0;
+
+    // /* Initiate acl info struct */
+    // server.acl_info.invalid_cmd_accesses = 0;
+    // server.acl_info.invalid_key_accesses  = 0;
+    // server.acl_info.user_auth_failures = 0;
+    // server.acl_info.invalid_channel_accesses = 0;
+
+    /* Create the timer callback, this is our way to process many background
+     * operations incrementally, like clients timeout, eviction of unaccessed
+     * expired keys and so forth. */
+    if (aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
+        // serverPanic("Can't create event loop timers.");
+        serverLog(LL_WARNING,"test --> Can't create event loop timers.");
+        exit(1);
+    }
+
+    /* Register a readable event for the pipe used to awake the event loop
+     * from module threads. */
+    // if (aeCreateFileEvent(server.el, server.module_pipe[0], AE_READABLE,
+    //     modulePipeReadable,NULL) == AE_ERR) {
+    //         serverPanic(
+    //             "Error registering the readable event for the module pipe.");
+    // }
+
+    /* Register before and after sleep handlers (note this needs to be done
+     * before loading persistence since it is used by processEventsWhileBlocked. */
+    aeSetBeforeSleepProc(server.el,beforeSleep);
+    aeSetAfterSleepProc(server.el,afterSleep);
+
+    /* 32 bit instances are limited to 4GB of address space, so if there is
+     * no explicit limit in the user provided configuration we set a limit
+     * at 3 GB using maxmemory with 'noeviction' policy'. This avoids
+     * useless crashes of the Redis instance for out of memory. */
+    if (server.arch_bits == 32 && server.maxmemory == 0) {
+        serverLog(LL_WARNING,"Warning: 32 bit instance detected but no memory limit set. Setting 3 GB maxmemory limit with 'noeviction' policy now.");
+        server.maxmemory = 3072LL*(1024*1024); /* 3 GB */
+        server.maxmemory_policy = MAXMEMORY_NO_EVICTION;
+    }
+
+    // scriptingInit(1);
+    // functionsInit();
+    // slowlogInit();
+    // latencyMonitorInit();
+
+    /* Initialize ACL default password if it exists */
+    // ACLUpdateDefaultUserPassword(server.requirepass);
+
+    applyWatchdogPeriod();
+}
+
+#pragma endregion
+
 int main(int argc, char **argv)
 {
     struct timeval tv;
@@ -385,6 +1337,8 @@ int main(int argc, char **argv)
     printf("mainserver %d", argc);
     /* We need to initialize our libraries, and the server configuration. */
 
+    //debug
+    server.logfile="/var/log/redis/mylog.log";
 #ifdef INIT_SETPROCTITLE_REPLACEMENT
     spt_init(argc, argv);
 #endif
@@ -494,6 +1448,7 @@ int main(int argc, char **argv)
     } else {
         serverLog(LL_WARNING, "Configuration loaded");
     }
+    initServer();
 
     aeMain(server.el);
 
