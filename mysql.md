@@ -1,4 +1,85 @@
 ## MYSQL
+### 20230201
+- 拥有主键的表相当于父表，拥有外键的表是子表，当有数据插入到子表的时候必须该行数据是被包含在父表中的.
+- Group by 需要聚集函数进行划分数据，比如Min,Max，Sum,Count,Avg,而不是一个简单的字段进行划分
+- having 与where 区别, where是 笛卡尔积进行数据筛选，耗时,having 会在聚集函数筛选之后再进行过滤
+- exists 和 not exists
+- 去重 select distinct xx from table ; select (distinct (xx)) from table
+- 正序 逆序 : select xx from table order by xx asc; select xx from table order by xx desc;
+- insert into 多个实体: insert into table values (v1),(v2),(v3)……
+- 判断null : where xx is null ; where xx is not null
+- update table set col=xxx where x
+- delete from table where xx
+- 限制最终行数: select top xx from table ; select xx from table limit 10;
+- sql 中的模式匹配 %xx% ; _xx; [sd]
+- where in ;not in
+- select into table
+- insert into select xx from table
+- case when then end
+  ```js
+    SELECT CustomerName, City, Country
+    FROM Customers
+    ORDER BY
+    (CASE
+        WHEN City IS NULL THEN Country
+        ELSE City
+    END);
+  ```
+- useful fn
+    - rank()
+    ```sql
+    SELECT name, rollno, score
+    , rank() over (order by score, dob desc) as rnk
+    FROM score
+    WHERE examid = '1'
+    ORDER BY score DESC, dob ASC
+
+    # 传统做法
+    SELECT
+    a.id,
+    a.score AS score,
+    ( SELECT count( DISTINCT b.score ) FROM test_score b WHERE b.score >= a.score) AS Rank 
+    FROM
+        test_score a 
+    ORDER BY
+        a.score DESC;
+    ```
+    - isnull(xx,0) ; 
+- procedure: create procedure xxx; exec xxx;
+- check (xxx <limit): 限制条件
+- procedure
+  ```sql
+    CREATE TABLE orderT (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    C2 VARCHAR(100),
+    C3 VARCHAR(100) )
+    ENGINE=InnoDB
+    COMMENT="NDB_TABLE=READ_BACKUP=0,PARTITION_BALANCE=FOR_RP_BY_NODE";
+
+    # procedure 
+    use test_db;
+    DROP PROCEDURE if EXISTS BatchInsert;
+    delimiter //
+    CREATE PROCEDURE BatchInsert(IN initId INT, IN loop_counts INT)
+    BEGIN
+        DECLARE dy_Var INT default 0;
+        DECLARE dy_ID INT default 0;
+        SET dy_Var = 0;
+        SET dy_ID = initId;
+        set autocommit=0;
+        WHILE dy_Var < loop_counts DO
+            INSERT INTO `orderT` (`C2`,`C3`) 
+            VALUES (CONCAT('20220704', 100000000000 + dy_ID),CONCAT('C0', 512201907191454553491 + dy_ID));
+            SET dy_ID = dy_ID + 1;
+            SET dy_Var = dy_Var + 1;
+        END WHILE;
+        COMMIT;
+    END//;
+
+    delimiter ;
+    --show procedure status ; -- 查看存储过程
+    CALL BatchInsert(1, 1000);  -- 调用存储过程
+  ```
 ### 20220511
 - knowledge freequent
     - function & procedure : call precedure , function like max(),version()
