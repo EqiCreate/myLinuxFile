@@ -1,4 +1,38 @@
 ## MYSQL
+### 20230202
+- <mark style="color:red">sql 死锁的发生和应对</mark>
+  - 死锁可以避免都会牺牲性能，不损失性能只能尽量减少可能存在的概率或者次数
+  - 死锁发生的情况
+    - 执行顺序相反,如互相拥有对方的锁，而且至少有一方是排他锁时
+    - 排他锁正在执行且此时有其他事务获取共享锁，且正好也要升级为排他锁，由于第一个排他锁因为第二个事务无法释放共享锁(处在等待升级的状态)
+    - ……
+  - 死锁的应对
+    - 时刻记住基数*概率，第一步永远是紧跟业务，是否能分库分表，是否能简化流程
+    - 技术上减少概率或者次数: 如规定代码程序的事务执行逻辑(先后顺序等),利用数据库框架本身支持的技术比如sqlserver的更新锁，oracle的for update 语法糖,前端注意事务线程等，避免执行事务太久,避免出现roll back
+    - 出现后补救
+      - 确认死锁:show engine innodb status;
+      - kill process : use information_scheme; select * from processlist where db=xxx; kill xxx;
+    - ……
+- sql fn
+  - year(xxx) : 获取某字段的年份
+  - now () : 当前时间
+  - timestampdiff(month,xxxx,now())/12 : 根据时间距离计算岁数
+  - current_date : 当前日期 : select current_date;
+  - describe table; 显示表的列名信息等
+  - 取余操作只能用MOD(m,n) !!
+  - cast/convert : 转换格式 i.e. cast(xx as unsigned)
+  - 设置变量如果右边是select 应该加括号 i.e. set @a= (select xxx from table);
+  - 变量的初始化在select中的用法
+    ```sql
+    # select 多表实际上因为多表没有筛选过滤所以也可以看成两个select
+    # 在(select xxx as table 中@v:=0) 代表已经声明了该变量 并且赋初始值
+    # 在每次select @v 中，每触发一次就会执行一次变量操作
+    select sid,@r:=@r+2 as num_row,@t:=@t+1 as tt from score,(select @r:=0 )a
+    s B,(select @t:=0)as C order by sid;
+
+    # 获取行数在mysql有fn: row_number()
+    select * from (select * ,row_number() over (order by id) as rn from orderT) as V where V.rn <= (select 0.2 * count(*) from orderT);
+    ```
 ### 20230201
 - 拥有主键的表相当于父表，拥有外键的表是子表，当有数据插入到子表的时候必须该行数据是被包含在父表中的.
 - Group by 需要聚集函数进行划分数据，比如Min,Max，Sum,Count,Avg,而不是一个简单的字段进行划分
