@@ -1083,11 +1083,11 @@ void _serverAssert(const char *estr, const char *file, int line) {
 //     serverLogObjectDebugInfo(o);
 // }
 
-// void _serverAssertWithInfo(const client *c, const robj *o, const char *estr, const char *file, int line) {
-//     if (c) _serverAssertPrintClientInfo(c);
-//     if (o) _serverAssertPrintObject(o);
-//     _serverAssert(estr,file,line);
-// }
+void _serverAssertWithInfo(const client *c, const robj *o, const char *estr, const char *file, int line) {
+    // if (c) _serverAssertPrintClientInfo(c); //debug michael
+    // if (o) _serverAssertPrintObject(o); //debug michael
+    _serverAssert(estr,file,line);
+}
 
 void _serverPanic(const char *file, int line, const char *msg, ...) {
     va_list ap;

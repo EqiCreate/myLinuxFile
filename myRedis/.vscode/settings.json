@@ -22,7 +22,9 @@
         "rdb.h": "c",
         "fpconv_dtoa.h": "c",
         "sha256.h": "c",
-        "signal.h": "c"
+        "signal.h": "c",
+        "script.h": "c",
+        "endianconv.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

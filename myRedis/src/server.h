@@ -12,22 +12,31 @@
 #include <assert.h>
 #include <signal.h>
 #include <pthread.h> //about threads
+#include <sys/socket.h> //connect with client
+
 #include "zmalloc.h" /* total memory usage aware version of malloc/free */
+#include "endianconv.h"
 #include "crc64.h"
 #include "util.h"    /* Misc functions useful in many places */
 
 #include "dict.h"    /* Hash tables */
 // #include "atomicvar.h"
 // #include "sds.h"
-// #include "adlist.h"  /* Linked lists */
+#include "adlist.h"  /* Linked lists */
 #include "ae.h"      /* Event driven programming library */
-// #include "anet.h"    /* Networking the easy way */
-// #include "connection.h" /* Connection abstraction */
+#include "anet.h"    /* Networking the easy way */
+#include "connection.h" /* Connection abstraction */
 // #include "rax.h"     /* Radix tree */
 // #include "rio.h"
 
-#include "redismodule.h"    /* Redis modules API defines. */
 #include "version.h"
+
+typedef long long mstime_t; /* millisecond time type. */
+typedef long long ustime_t; /* microsecond time type. */
+#define REDISMODULE_CORE 1 // about redismodule
+typedef struct redisObject robj;
+#include "redismodule.h"    /* Redis modules API defines. */
+
 
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
@@ -49,6 +58,30 @@
 #define OBJ_STATIC_REFCOUNT (INT_MAX-1) /* Object allocated in the stack. */
 #define OBJ_FIRST_SPECIAL_REFCOUNT OBJ_STATIC_REFCOUNT
 
+
+/* Protocol and I/O related defines */
+#define PROTO_IOBUF_LEN         (1024*16)  /* Generic I/O buffer size */
+#define PROTO_REPLY_CHUNK_BYTES (16*1024) /* 16k output buffer */
+#define PROTO_INLINE_MAX_SIZE   (1024*64) /* Max size of inline reads */
+#define PROTO_MBULK_BIG_ARG     (1024*32)
+#define PROTO_RESIZE_THRESHOLD  (1024*32) /* Threshold for determining whether to resize query buffer */
+#define PROTO_REPLY_MIN_BYTES   (1024) /* the lower limit on reply buffer size */
+#define REDIS_AUTOSYNC_BYTES (1024*1024*4) /* Sync file every 4MB. */
+
+#define REPLY_BUFFER_DEFAULT_PEAK_RESET_TIME 5000 /* 5 seconds */
+
+/* Client block type (btype field in client structure)
+ * if CLIENT_BLOCKED flag is set. */
+#define BLOCKED_NONE 0    /* Not blocked, no CLIENT_BLOCKED flag set. */
+#define BLOCKED_LIST 1    /* BLPOP & co. */
+#define BLOCKED_WAIT 2    /* WAIT for synchronous replication. */
+#define BLOCKED_MODULE 3  /* Blocked by a loadable module. */
+#define BLOCKED_STREAM 4  /* XREAD. */
+#define BLOCKED_ZSET 5    /* BZPOP et al. */
+#define BLOCKED_POSTPONE 6 /* Blocked by processCommand, re-try processing later. */
+#define BLOCKED_SHUTDOWN 7 /* SHUTDOWN. */
+#define BLOCKED_NUM 8      /* Number of blocked states. */
+
 /* AIX defines hz to __hz, we don't use this define and in order to allow
  * Redis build on AIX we need to undef it. */
 #ifdef _AIX
@@ -68,8 +101,7 @@
 #define LL_WARNING 3
 #define LL_RAW (1<<10) /* Modifier to log without timestamp */
 
-typedef long long mstime_t; /* millisecond time type. */
-typedef long long ustime_t; /* microsecond time type. */
+
 
 #define LRU_BITS 24
 #define EMPTYDB_NO_FLAGS 0      /* No flags. */
@@ -117,8 +149,6 @@ typedef long long ustime_t; /* microsecond time type. */
 #define C_OK                    0
 #define C_ERR                   -1
 
-#define REDISMODULE_CORE 1
-
 /* Static server configuration */
 #define CONFIG_DEFAULT_HZ        10             /* Time interrupt calls/sec. */
 #define CONFIG_MIN_HZ            1
@@ -154,6 +184,19 @@ typedef long long ustime_t; /* microsecond time type. */
 #define OBJ_SET 2       /* Set object. */
 #define OBJ_ZSET 3      /* Sorted set object. */
 #define OBJ_HASH 4      /* Hash object. */
+/* The "module" object type is a special one that signals that the object
+ * is one directly managed by a Redis module. In this case the value points
+ * to a moduleValue struct, which contains the object value (which is only
+ * handled by the module itself) and the RedisModuleType struct which lists
+ * function pointers in order to serialize, deserialize, AOF-rewrite and
+ * free the object.
+ *
+ * Inside the RDB file, module types are encoded as OBJ_MODULE followed
+ * by a 64 bit module type ID, which has a 54 bits module-specific signature
+ * in order to dispatch the loading to the right module, plus a 10 bits
+ * encoding version. */
+#define OBJ_MODULE 5    /* Module object. */
+#define OBJ_STREAM 6    /* Stream object. */
 
 /* When configuring the server eventloop, we setup it so that the total number
  * of file descriptors we can handle are server.maxclients + RESERVED_FDS +
@@ -301,8 +344,8 @@ struct RedisModule {
     int in_hook;    /* Hooks callback nesting level for this module (0 or 1). */
     int options;    /* Module options and capabilities. */
     int blocked_clients;         /* Count of RedisModuleBlockedClient in this module. */
-    RedisModuleInfoFunc info_cb; /* Callback for module to add INFO fields. */
-    RedisModuleDefragFunc defrag_cb;    /* Callback for global data defrag. */
+    // RedisModuleInfoFunc info_cb; /* Callback for module to add INFO fields. */
+    // RedisModuleDefragFunc defrag_cb;    /* Callback for global data defrag. */
     struct moduleLoadQueueEntry *loadmod; /* Module load arguments for config rewrite. */
 };
 typedef struct RedisModule RedisModule;
@@ -315,9 +358,8 @@ typedef struct redisObject {
                             * and most significant 16 bits access time). */
     int refcount;
     void *ptr;
-}robj;
+};
 
-// typedef struct redisObject robj;
 
 
 /* Opaque type for the Slot to Key API. */
@@ -542,7 +584,7 @@ typedef struct multiState {
 typedef struct client {
     uint64_t id;            /* Client incremental unique ID. */
     uint64_t flags;         /* Client flags: CLIENT_* macros. */
-    // connection *conn;
+    connection *conn;
     int resp;               /* RESP protocol version. Can be 2 or 3. */
     redisDb *db;            /* Pointer to currently SELECTed DB. */
     robj *name;             /* As set by CLIENT SETNAME. */
@@ -605,7 +647,7 @@ typedef struct client {
     // list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
     // dict *pubsubshard_channels;  /* shard level channels a client is interested in (SSUBSCRIBE) */
     // sds peerid;             /* Cached peer ID. */
-    // sds sockname;           /* Cached connection target address. */
+    sds sockname;           /* Cached connection target address. */
     // listNode *client_list_node; /* list node in client list */
     // listNode *postponed_list_node; /* list node within the postponed list */
     // listNode *pending_read_list_node; /* list node in clients pending read list */
@@ -643,12 +685,12 @@ typedef struct client {
     //                               * i.e. the next offset to send. */
 
     // /* list node in clients_pending_write list */
-    // listNode clients_pending_write_node;
+    listNode clients_pending_write_node;
     // /* Response buffer */
-    // size_t buf_peak; /* Peak used size of buffer in last 5 sec interval. */
-    // mstime_t buf_peak_last_reset_time; /* keeps the last time the buffer peak value was reset */
-    // int bufpos;
-    // size_t buf_usable_size; /* Usable size of buffer. */
+    size_t buf_peak; /* Peak used size of buffer in last 5 sec interval. */
+    mstime_t buf_peak_last_reset_time; /* keeps the last time the buffer peak value was reset */
+    int bufpos;
+    size_t buf_usable_size; /* Usable size of buffer. */
     char *buf;
 } client;
 
@@ -674,54 +716,54 @@ struct redisServer {
     // rax *errors;                /* Errors table */
     // redisAtomic unsigned int lruclock; /* Clock for LRU eviction */
     volatile sig_atomic_t shutdown_asap; /* Shutdown ordered by signal handler. */
-    // mstime_t shutdown_mstime;   /* Timestamp to limit graceful shutdown. */
+    mstime_t shutdown_mstime;   /* Timestamp to limit graceful shutdown. */
     int last_sig_received;      /* Indicates the last SIGNAL received, if any (e.g., SIGINT or SIGTERM). */
-    // int shutdown_flags;         /* Flags passed to prepareForShutdown(). */
-    // int activerehashing;        /* Incremental rehash in serverCron() */
-    // int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) */
-    // char *pidfile;              /* PID file path */
+    int shutdown_flags;         /* Flags passed to prepareForShutdown(). */
+    int activerehashing;        /* Incremental rehash in serverCron() */
+    int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) */
+    char *pidfile;              /* PID file path */
     int arch_bits;              /* 32 or 64 depending on sizeof(long) */
     int cronloops;              /* Number of times the cron function run */
-    // char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
+    char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
     int sentinel_mode;          /* True if this instance is a Sentinel. */
-    // size_t initial_memory_usage; /* Bytes used after initialization. */
+    size_t initial_memory_usage; /* Bytes used after initialization. */
     // int always_show_logo;       /* Show logo even for non-stdout logging. */
     // int in_exec;                /* Are we inside EXEC? */
     // int busy_module_yield_flags;         /* Are we inside a busy module? (triggered by RM_Yield). see BUSY_MODULE_YIELD_ flags. */
     // const char *busy_module_yield_reply; /* When non-null, we are inside RM_Yield. */
     int core_propagates;        /* Is the core (in oppose to the module subsystem) is in charge of calling propagatePendingCommands? */
-    // int module_ctx_nesting;     /* moduleCreateContext() nesting level */
-    // char *ignore_warnings;      /* Config: warnings that should be ignored. */
-    // int client_pause_in_transaction; /* Was a client pause executed during this Exec? */
-    // int thp_enabled;                 /* If true, THP is enabled. */
-    // size_t page_size;                /* The page size of OS. */
+    int module_ctx_nesting;     /* moduleCreateContext() nesting level */
+    char *ignore_warnings;      /* Config: warnings that should be ignored. */
+    int client_pause_in_transaction; /* Was a client pause executed during this Exec? */
+    int thp_enabled;                 /* If true, THP is enabled. */
+    size_t page_size;                /* The page size of OS. */
     // /* Modules */
-    // dict *moduleapi;            /* Exported core APIs dictionary for modules. */
-    // dict *sharedapi;            /* Like moduleapi but containing the APIs that
+    dict *moduleapi;            /* Exported core APIs dictionary for modules. */
+    dict *sharedapi;            /* Like moduleapi but containing the APIs that
     //                                modules share with each other. */
     dict *module_configs_queue; /* Dict that stores module configurations from .conf file until after modules are loaded during startup or arguments to loadex. */
     // list *loadmodule_queue;     /* List of modules to load at startup. */
     int module_pipe[2];         /* Pipe used to awake the event loop by module threads. */
-    // pid_t child_pid;            /* PID of current child */
-    // int child_type;             /* Type of current child */
+    pid_t child_pid;            /* PID of current child */
+    int child_type;             /* Type of current child */
     // /* Networking */
     int port;                   /* TCP listening port */
     int tls_port;               /* TLS listening port */
-    // int tcp_backlog;            /* TCP listen() backlog */
+    int tcp_backlog;            /* TCP listen() backlog */
     char *bindaddr[CONFIG_BINDADDR_MAX]; /* Addresses we should bind to */
     int bindaddr_count;         /* Number of addresses in server.bindaddr[] */
     char *bind_source_addr;     /* Source address to bind on for outgoing connections */
-    // char *unixsocket;           /* UNIX socket path */
-    // unsigned int unixsocketperm; /* UNIX socket permission (see mode_t) */
-    // connListener listeners[CONN_TYPE_MAX]; /* TCP/Unix/TLS even more types */
-    // uint32_t socket_mark_id;    /* ID for listen socket marking */
-    // connListener clistener;     /* Cluster bus listener */
-    // list *clients;              /* List of active clients */
-    // list *clients_to_close;     /* Clients to close asynchronously */
+    char *unixsocket;           /* UNIX socket path */
+    unsigned int unixsocketperm; /* UNIX socket permission (see mode_t) */
+    connListener listeners[CONN_TYPE_MAX]; /* TCP/Unix/TLS even more types */
+    uint32_t socket_mark_id;    /* ID for listen socket marking */
+    connListener clistener;     /* Cluster bus listener */
+    list *clients;              /* List of active clients */
+    list *clients_to_close;     /* Clients to close asynchronously */
     // list *clients_pending_write; /* There is to write or install handler. */
     // list *clients_pending_read;  /* Client has pending read socket buffers. */
     // list *slaves, *monitors;    /* List of slaves and MONITORs */
-    // client *current_client;     /* Current client executing the command. */
+    client *current_client;     /* Current client executing the command. */
 
     // /* Stuff for client mem eviction */
     // clientMemUsageBucket client_mem_usage_buckets[CLIENT_MEM_USAGE_BUCKETS];
@@ -732,17 +774,17 @@ struct redisServer {
     uint32_t paused_actions;   /* Bitmask of actions that are currently paused */
     // list *postponed_clients;       /* List of postponed clients */
     // pause_event client_pause_per_purpose[NUM_PAUSE_PURPOSES];
-    // char neterr[ANET_ERR_LEN];   /* Error buffer for anet.c */
+    char neterr[ANET_ERR_LEN];   /* Error buffer for anet.c */
     // dict *migrate_cached_sockets;/* MIGRATE cached sockets */
     // redisAtomic uint64_t next_client_id; /* Next client unique ID. Incremental. */
-    // int protected_mode;         /* Don't accept external connections. */
-    // int io_threads_num;         /* Number of IO threads to use. */
-    // int io_threads_do_reads;    /* Read and parse from IO threads? */
-    // int io_threads_active;      /* Is IO threads currently active? */
+    int protected_mode;         /* Don't accept external connections. */
+    int io_threads_num;         /* Number of IO threads to use. */
+    int io_threads_do_reads;    /* Read and parse from IO threads? */
+    int io_threads_active;      /* Is IO threads currently active? */
     long long events_processed_while_blocked; /* processEventsWhileBlocked() */
-    // int enable_protected_configs;    /* Enable the modification of protected configs, see PROTECTED_ACTION_ALLOWED_* */
-    // int enable_debug_cmd;            /* Enable DEBUG commands, see PROTECTED_ACTION_ALLOWED_* */
-    // int enable_module_cmd;           /* Enable MODULE commands, see PROTECTED_ACTION_ALLOWED_* */
+    int enable_protected_configs;    /* Enable the modification of protected configs, see PROTECTED_ACTION_ALLOWED_* */
+    int enable_debug_cmd;            /* Enable DEBUG commands, see PROTECTED_ACTION_ALLOWED_* */
+    int enable_module_cmd;           /* Enable MODULE commands, see PROTECTED_ACTION_ALLOWED_* */
 
     // /* RDB / AOF loading information */
     volatile sig_atomic_t loading; /* We are loading data from disk if true */
@@ -755,7 +797,7 @@ struct redisServer {
     // /* Fields used only for stats */
     // time_t stat_starttime;          /* Server start time */
     // long long stat_numcommands;     /* Number of processed commands */
-    // long long stat_numconnections;  /* Number of connections received */
+    long long stat_numconnections;  /* Number of connections received */
     // long long stat_expiredkeys;     /* Number of expired keys */
     // double stat_expired_stale_perc; /* Percentage of keys probably expired */
     // long long stat_expired_time_cap_reached_count; /* Early expire cycle stops.*/
@@ -780,7 +822,7 @@ struct redisServer {
     // long long stat_fork_time;       /* Time needed to perform latest fork() */
     // double stat_fork_rate;          /* Fork rate in GB/sec. */
     // long long stat_total_forks;     /* Total count of fork. */
-    // long long stat_rejected_conn;   /* Clients rejected because of maxclients */
+    long long stat_rejected_conn;   /* Clients rejected because of maxclients */
     // long long stat_sync_full;       /* Number of full resyncs with slaves. */
     // long long stat_sync_partial_ok; /* Number of accepted PSYNC requests. */
     // long long stat_sync_partial_err;/* Number of unaccepted PSYNC requests. */
@@ -840,17 +882,17 @@ struct redisServer {
     // unsigned long active_defrag_max_scan_fields; /* maximum number of fields of set/hash/zset/list to process from within the main dict scan */
     // size_t client_max_querybuf_len; /* Limit for client query buffer length */
     int dbnum;                      /* Total number of configured DBs */
-    // int supervised;                 /* 1 if supervised, 0 otherwise. */
-    // int supervised_mode;            /* See SUPERVISED_* */
+    int supervised;                 /* 1 if supervised, 0 otherwise. */
+    int supervised_mode;            /* See SUPERVISED_* */
     int daemonize;                  /* True if running as a daemon */
-    // int set_proc_title;             /* True if change proc title */
-    // char *proc_title_template;      /* Process title template format */
+    int set_proc_title;             /* True if change proc title */
+    char *proc_title_template;      /* Process title template format */
     // clientBufferLimitsConfig client_obuf_limits[CLIENT_TYPE_OBUF_COUNT];
     int pause_cron;                 /* Don't run cron tasks (debug) */
-    // int latency_tracking_enabled;   /* 1 if extended latency tracking is enabled, 0 otherwise. */
-    // double *latency_tracking_info_percentiles; /* Extended latency tracking info output percentile list configuration. */
-    // int latency_tracking_info_percentiles_len;
-    // /* AOF persistence */
+    int latency_tracking_enabled;   /* 1 if extended latency tracking is enabled, 0 otherwise. */
+    double *latency_tracking_info_percentiles; /* Extended latency tracking info output percentile list configuration. */
+    int latency_tracking_info_percentiles_len;
+    /* AOF persistence */
     // int aof_enabled;                /* AOF configuration */
     // int aof_state;                  /* AOF_(ON|OFF|WAIT_REWRITE) */
     // int aof_fsync;                  /* Kind of fsync() policy */
@@ -939,9 +981,9 @@ struct redisServer {
     // int use_exit_on_panic;          /* Use exit() on panic and assert rather than
     //                                  * abort(). useful for Valgrind. */
     // /* Shutdown */
-    // int shutdown_timeout;           /* Graceful shutdown time limit in seconds. */
-    // int shutdown_on_sigint;         /* Shutdown flags configured for SIGINT. */
-    // int shutdown_on_sigterm;        /* Shutdown flags configured for SIGTERM. */
+    int shutdown_timeout;           /* Graceful shutdown time limit in seconds. */
+    int shutdown_on_sigint;         /* Shutdown flags configured for SIGINT. */
+    int shutdown_on_sigterm;        /* Shutdown flags configured for SIGTERM. */
 
     // /* Replication (master) */
     // char replid[CONFIG_RUN_ID_SIZE+1];  /* My current replication ID. */
@@ -1166,6 +1208,7 @@ void _serverLog(int level, const char *fmt, ...);
         _serverLog(level, __VA_ARGS__);\
     } while(0)
 
+#define serverAssertWithInfo(_c,_o,_e) ((_e)?(void)0 : (_serverAssertWithInfo(_c,_o,#_e,__FILE__,__LINE__),redis_unreachable()))
 
 /* Anti-warning macro... */
 #define UNUSED(V) ((void) V)
@@ -1175,6 +1218,7 @@ void _serverLog(int level, const char *fmt, ...);
  * The actual resolution depends on server.hz. */
 #define run_with_period(_ms_) if (((_ms_) <= 1000/server.hz) || !(server.cronloops%((_ms_)/(1000/server.hz))))
 
+#define sdsEncodedObject(objptr) (objptr->encoding == OBJ_ENCODING_RAW || objptr->encoding == OBJ_ENCODING_EMBSTR)
 
 void getRandomBytes(unsigned char *p, size_t len);
  
@@ -1252,10 +1296,63 @@ typedef enum {
 #define NOTIFY_NEW (1<<14)        /* n, new key notification */
 #define NOTIFY_ALL (NOTIFY_GENERIC | NOTIFY_STRING | NOTIFY_LIST | NOTIFY_SET | NOTIFY_HASH | NOTIFY_ZSET | NOTIFY_EXPIRED | NOTIFY_EVICTED | NOTIFY_STREAM | NOTIFY_MODULE) /* A flag */
 
+/* This structure represents a Redis user. This is useful for ACLs, the
+ * user is associated to the connection after the connection is authenticated.
+ * If there is no associated user, the connection uses the default user. */
+#define USER_COMMAND_BITS_COUNT 1024    /* The total number of command bits
+                                           in the user structure. The last valid
+                                           command ID we can set in the user
+                                           is USER_COMMAND_BITS_COUNT-1. */
+#define USER_FLAG_ENABLED (1<<0)        /* The user is active. */
+#define USER_FLAG_DISABLED (1<<1)       /* The user is disabled. */
+#define USER_FLAG_NOPASS (1<<2)         /* The user requires no password, any
+                                           provided password will work. For the
+                                           default user, this also means that
+                                           no AUTH is needed, and every
+                                           connection is immediately
+                                           authenticated. */
+#define USER_FLAG_SANITIZE_PAYLOAD (1<<3)       /* The user require a deep RESTORE
+                                                 * payload sanitization. */
+#define USER_FLAG_SANITIZE_PAYLOAD_SKIP (1<<4)  /* The user should skip the
+                                                 * deep sanitization of RESTORE
+                                                 * payload. */
+
+#define SELECTOR_FLAG_ROOT (1<<0)           /* This is the root user permission
+                                             * selector. */
+#define SELECTOR_FLAG_ALLKEYS (1<<1)        /* The user can mention any key. */
+#define SELECTOR_FLAG_ALLCOMMANDS (1<<2)    /* The user can run all commands. */
+#define SELECTOR_FLAG_ALLCHANNELS (1<<3)    /* The user can mention any Pub/Sub
+                                               channel. */
+
+                                               /* Client classes for client limits, currently used only for
+ * the max-client-output-buffer limit implementation. */
+#define CLIENT_TYPE_NORMAL 0 /* Normal req-reply clients + MONITORs */
+#define CLIENT_TYPE_SLAVE 1  /* Slaves. */
+#define CLIENT_TYPE_PUBSUB 2 /* Clients subscribed to PubSub channels. */
+#define CLIENT_TYPE_MASTER 3 /* Master. */
+#define CLIENT_TYPE_COUNT 4  /* Total number of client types. */
+#define CLIENT_TYPE_OBUF_COUNT 3 /* Number of clients to expose to output
+                                    buffer configuration. Just the first
+                                    three: normal, slave, pubsub. */
+
+
+typedef struct {
+    sds name;       /* The username as an SDS string. */
+    uint32_t flags; /* See USER_FLAG_* */
+    list *passwords; /* A list of SDS valid passwords for this user. */
+    list *selectors; /* A list of selectors this user validates commands
+                        against. This list will always contain at least
+                        one selector for backwards compatibility. */
+    robj *acl_string; /* cached string represent of ACLs */
+} user;
 
 extern struct redisServer server;
 extern struct sharedObjectsStruct shared;
 extern dictType sdsHashDictType;
+
+extern user *DefaultUser;
+extern dictType objectKeyHeapPointerValueDictType;
+extern dictType objectKeyPointerValueDictType;
 
 
 
@@ -1318,6 +1415,20 @@ robj *createObject(int type, void *ptr);
 void evictionPoolAlloc(void);
 void watchdogScheduleSignal(int period);
 void sigsegvHandler(int sig, siginfo_t *info, void *secret);
+
+mstime_t mstime(void);
+long long ustime(void);
+
+/* Synchronous I/O with timeout */
+ssize_t syncWrite(int fd, char *ptr, ssize_t size, long long timeout);
+ssize_t syncRead(int fd, char *ptr, ssize_t size, long long timeout);
+ssize_t syncReadLine(int fd, char *ptr, ssize_t size, long long timeout);
+
+/* networking.c -- Networking and Client related operations */
+void acceptCommonHandler(connection *conn, int flags, char *ip);
+void decrRefCountVoid(void *o);
+void freeClient(client *c);
+
 
 
 #include "rdb.h"

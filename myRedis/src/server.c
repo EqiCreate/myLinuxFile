@@ -1329,6 +1329,24 @@ void initServer(void) {
 
 #pragma endregion
 
+
+# pragma region
+
+/* Return the UNIX time in microseconds */
+long long ustime(void) {
+    struct timeval tv;
+    long long ust;
+
+    gettimeofday(&tv, NULL);
+    ust = ((long long)tv.tv_sec)*1000000;
+    ust += tv.tv_usec;
+    return ust;
+}
+/* Return the UNIX time in milliseconds */
+mstime_t mstime(void) {
+    return ustime()/1000;
+}
+# pragma endregion
 int main(int argc, char **argv)
 {
     struct timeval tv;
@@ -1362,7 +1380,7 @@ int main(int argc, char **argv)
     uint8_t hashseed[16];
     getRandomBytes(hashseed, sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
-    char *exec_name = strrchr(argv[0], '/');
+    char *exec_name = strrchr(argv[0], '/');// strchr 返回参数在字符串中的最后一次的位置
     if (exec_name == NULL) exec_name = argv[0];
     server.sentinel_mode = checkForSentinelMode(argc,argv, exec_name);
     initServerConfig();

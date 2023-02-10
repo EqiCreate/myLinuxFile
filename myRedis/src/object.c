@@ -383,24 +383,28 @@ robj *createObject(int type, void *ptr) {
 //     }
 // }
 
-// void decrRefCount(robj *o) {
-//     if (o->refcount == 1) {
-//         switch(o->type) {
-//         case OBJ_STRING: freeStringObject(o); break;
-//         case OBJ_LIST: freeListObject(o); break;
-//         case OBJ_SET: freeSetObject(o); break;
-//         case OBJ_ZSET: freeZsetObject(o); break;
-//         case OBJ_HASH: freeHashObject(o); break;
-//         case OBJ_MODULE: freeModuleObject(o); break;
-//         case OBJ_STREAM: freeStreamObject(o); break;
-//         default: serverPanic("Unknown object type"); break;
-//         }
-//         zfree(o);
-//     } else {
-//         if (o->refcount <= 0) serverPanic("decrRefCount against refcount <= 0");
-//         if (o->refcount != OBJ_SHARED_REFCOUNT) o->refcount--;
-//     }
-// }
+void decrRefCount(robj *o) {
+    if (o->refcount == 1) {
+        switch(o->type) {
+        case OBJ_STRING: freeStringObject(o); break;
+        case OBJ_LIST: freeListObject(o); break;
+        case OBJ_SET: freeSetObject(o); break;
+        case OBJ_ZSET: freeZsetObject(o); break;
+        case OBJ_HASH: freeHashObject(o); break;
+        case OBJ_MODULE: freeModuleObject(o); break;
+        case OBJ_STREAM: freeStreamObject(o); break;
+        // default: serverPanic("Unknown object type"); break; 
+        default: serverLog(LL_DEBUG,"Unknown object type"); break; //debug michael
+
+        }
+        zfree(o);
+    } else {
+        // if (o->refcount <= 0) serverPanic("decrRefCount against refcount <= 0");
+        if (o->refcount <= 0) serverLog(LL_DEBUG,"decrRefCount against refcount <= 0");
+
+        if (o->refcount != OBJ_SHARED_REFCOUNT) o->refcount--;
+    }
+}
 
 // /* See dismissObject() */
 // void dismissSds(sds s) {
@@ -580,9 +584,9 @@ robj *createObject(int type, void *ptr) {
 // /* This variant of decrRefCount() gets its argument as void, and is useful
 //  * as free method in data structures that expect a 'void free_object(void*)'
 //  * prototype for the free method. */
-// void decrRefCountVoid(void *o) {
-//     decrRefCount(o);
-// }
+void decrRefCountVoid(void *o) {
+    decrRefCount(o);
+}
 
 // int checkType(client *c, robj *o, int type) {
 //     /* A NULL is considered an empty key */
@@ -726,45 +730,45 @@ robj *createObject(int type, void *ptr) {
 //  * Important note: when REDIS_COMPARE_BINARY is used a binary-safe comparison
 //  * is used. */
 
-// #define REDIS_COMPARE_BINARY (1<<0)
-// #define REDIS_COMPARE_COLL (1<<1)
+#define REDIS_COMPARE_BINARY (1<<0)
+#define REDIS_COMPARE_COLL (1<<1)
 
-// int compareStringObjectsWithFlags(const robj *a, const robj *b, int flags) {
-//     serverAssertWithInfo(NULL,a,a->type == OBJ_STRING && b->type == OBJ_STRING);
-//     char bufa[128], bufb[128], *astr, *bstr;
-//     size_t alen, blen, minlen;
+int compareStringObjectsWithFlags(const robj *a, const robj *b, int flags) {
+    serverAssertWithInfo(NULL,a,a->type == OBJ_STRING && b->type == OBJ_STRING);
+    char bufa[128], bufb[128], *astr, *bstr;
+    size_t alen, blen, minlen;
 
-//     if (a == b) return 0;
-//     if (sdsEncodedObject(a)) {
-//         astr = a->ptr;
-//         alen = sdslen(astr);
-//     } else {
-//         alen = ll2string(bufa,sizeof(bufa),(long) a->ptr);
-//         astr = bufa;
-//     }
-//     if (sdsEncodedObject(b)) {
-//         bstr = b->ptr;
-//         blen = sdslen(bstr);
-//     } else {
-//         blen = ll2string(bufb,sizeof(bufb),(long) b->ptr);
-//         bstr = bufb;
-//     }
-//     if (flags & REDIS_COMPARE_COLL) {
-//         return strcoll(astr,bstr);
-//     } else {
-//         int cmp;
+    if (a == b) return 0;
+    if (sdsEncodedObject(a)) {
+        astr = a->ptr;
+        alen = sdslen(astr);
+    } else {
+        alen = ll2string(bufa,sizeof(bufa),(long) a->ptr);
+        astr = bufa;
+    }
+    if (sdsEncodedObject(b)) {
+        bstr = b->ptr;
+        blen = sdslen(bstr);
+    } else {
+        blen = ll2string(bufb,sizeof(bufb),(long) b->ptr);
+        bstr = bufb;
+    }
+    if (flags & REDIS_COMPARE_COLL) {
+        return strcoll(astr,bstr);
+    } else {
+        int cmp;
 
-//         minlen = (alen < blen) ? alen : blen;
-//         cmp = memcmp(astr,bstr,minlen);
-//         if (cmp == 0) return alen-blen;
-//         return cmp;
-//     }
-// }
+        minlen = (alen < blen) ? alen : blen;
+        cmp = memcmp(astr,bstr,minlen);
+        if (cmp == 0) return alen-blen;
+        return cmp;
+    }
+}
 
 // /* Wrapper for compareStringObjectsWithFlags() using binary comparison. */
-// int compareStringObjects(const robj *a, const robj *b) {
-//     return compareStringObjectsWithFlags(a,b,REDIS_COMPARE_BINARY);
-// }
+int compareStringObjects(const robj *a, const robj *b) {
+    return compareStringObjectsWithFlags(a,b,REDIS_COMPARE_BINARY);
+}
 
 // /* Wrapper for compareStringObjectsWithFlags() using collation. */
 // int collateStringObjects(const robj *a, const robj *b) {
@@ -775,16 +779,16 @@ robj *createObject(int type, void *ptr) {
 //  * point of view of a string comparison, otherwise 0 is returned. Note that
 //  * this function is faster then checking for (compareStringObject(a,b) == 0)
 //  * because it can perform some more optimization. */
-// int equalStringObjects(robj *a, robj *b) {
-//     if (a->encoding == OBJ_ENCODING_INT &&
-//         b->encoding == OBJ_ENCODING_INT){
-//         /* If both strings are integer encoded just check if the stored
-//          * long is the same. */
-//         return a->ptr == b->ptr;
-//     } else {
-//         return compareStringObjects(a,b) == 0;
-//     }
-// }
+int equalStringObjects(robj *a, robj *b) {
+    if (a->encoding == OBJ_ENCODING_INT &&
+        b->encoding == OBJ_ENCODING_INT){
+        /* If both strings are integer encoded just check if the stored
+         * long is the same. */
+        return a->ptr == b->ptr;
+    } else {
+        return compareStringObjects(a,b) == 0;
+    }
+}
 
 // size_t stringObjectLen(robj *o) {
 //     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
