@@ -229,6 +229,36 @@ void initServerConfig(void) {
 //     return dictGenHashFunction((unsigned char*)key, sdslen((char*)key));
 // }
 
+
+int dictSdsKeyCompare(dict *d, const void *key1,
+        const void *key2)
+{
+    int l1,l2;
+    UNUSED(d);
+
+    l1 = sdslen((sds)key1);
+    l2 = sdslen((sds)key2);
+    if (l1 != l2) return 0;
+    return memcmp(key1, key2, l1) == 0;
+}
+
+void dictObjectDestructor(dict *d, void *val)
+{
+    UNUSED(d);
+    if (val == NULL) return; /* Lazy freeing will set value to NULL. */
+    decrRefCount(val);
+}
+
+/* This is a hash table type that uses the SDS dynamic strings library as
+ * keys and redis objects as values (objects can hold SDS strings,
+ * lists, sets). */
+
+void dictVanillaFree(dict *d, void *val)
+{
+    UNUSED(d);
+    zfree(val);
+}
+
 uint64_t dictSdsCaseHash(const void *key) {
     return dictGenCaseHashFunction((unsigned char*)key, sdslen((char*)key));
 }
@@ -269,42 +299,57 @@ dictType sdsHashDictType = {
 //     return strcasecmp(key1, key2) == 0;
 // }
 
-// int dictEncObjKeyCompare(dict *d, const void *key1, const void *key2)
-// {
-//     robj *o1 = (robj*) key1, *o2 = (robj*) key2;
-//     int cmp;
+int dictEncObjKeyCompare(dict *d, const void *key1, const void *key2)
+{
+    robj *o1 = (robj*) key1, *o2 = (robj*) key2;
+    int cmp;
 
-//     if (o1->encoding == OBJ_ENCODING_INT &&
-//         o2->encoding == OBJ_ENCODING_INT)
-//             return o1->ptr == o2->ptr;
+    if (o1->encoding == OBJ_ENCODING_INT &&
+        o2->encoding == OBJ_ENCODING_INT)
+            return o1->ptr == o2->ptr;
 
-//     /* Due to OBJ_STATIC_REFCOUNT, we avoid calling getDecodedObject() without
-//      * good reasons, because it would incrRefCount() the object, which
-//      * is invalid. So we check to make sure dictFind() works with static
-//      * objects as well. */
-//     if (o1->refcount != OBJ_STATIC_REFCOUNT) o1 = getDecodedObject(o1);
-//     if (o2->refcount != OBJ_STATIC_REFCOUNT) o2 = getDecodedObject(o2);
-//     cmp = dictSdsKeyCompare(d,o1->ptr,o2->ptr);
-//     if (o1->refcount != OBJ_STATIC_REFCOUNT) decrRefCount(o1);
-//     if (o2->refcount != OBJ_STATIC_REFCOUNT) decrRefCount(o2);
-//     return cmp;
-// }
+    /* Due to OBJ_STATIC_REFCOUNT, we avoid calling getDecodedObject() without
+     * good reasons, because it would incrRefCount() the object, which
+     * is invalid. So we check to make sure dictFind() works with static
+     * objects as well. */
+    if (o1->refcount != OBJ_STATIC_REFCOUNT) o1 = getDecodedObject(o1);
+    if (o2->refcount != OBJ_STATIC_REFCOUNT) o2 = getDecodedObject(o2);
+    cmp = dictSdsKeyCompare(d,o1->ptr,o2->ptr);
+    if (o1->refcount != OBJ_STATIC_REFCOUNT) decrRefCount(o1);
+    if (o2->refcount != OBJ_STATIC_REFCOUNT) decrRefCount(o2);
+    return cmp;
+}
 
-// uint64_t dictEncObjHash(const void *key) {
-//     robj *o = (robj*) key;
+uint64_t dictEncObjHash(const void *key) {
+    robj *o = (robj*) key;
 
-//     if (sdsEncodedObject(o)) {
-//         return dictGenHashFunction(o->ptr, sdslen((sds)o->ptr));
-//     } else if (o->encoding == OBJ_ENCODING_INT) {
-//         char buf[32];
-//         int len;
+    if (sdsEncodedObject(o)) {
+        return dictGenHashFunction(o->ptr, sdslen((sds)o->ptr));
+    } else if (o->encoding == OBJ_ENCODING_INT) {
+        char buf[32];
+        int len;
 
-//         len = ll2string(buf,32,(long)o->ptr);
-//         return dictGenHashFunction((unsigned char*)buf, len);
-//     } else {
-//         serverPanic("Unknown string encoding");
-//     }
-// }
+        len = ll2string(buf,32,(long)o->ptr);
+        return dictGenHashFunction((unsigned char*)buf, len);
+    } else {
+        serverPanic("Unknown string encoding");
+    }
+}
+
+
+
+/* Like objectKeyPointerValueDictType(), but values can be destroyed, if
+ * not NULL, calling zfree(). */
+dictType objectKeyHeapPointerValueDictType = {
+    dictEncObjHash,            /* hash function */
+    NULL,                      /* key dup */
+    NULL,                      /* val dup */
+    dictEncObjKeyCompare,      /* key compare */
+    dictObjectDestructor,      /* key destructor */
+    dictVanillaFree,           /* val destructor */
+    NULL                       /* allow to expand */
+};
+
 
 void version(void) {
     printf("Redis server v=%s sha=%s:%d malloc=%s bits=%d build=%llx\n",

@@ -39,8 +39,8 @@
 
 // static void setProtocolError(const char *errstr, client *c);
 // static void pauseClientsByClient(mstime_t end, int isPauseClientAll);
-// int postponeClientRead(client *c);
-// int ProcessingEventsWhileBlocked = 0; /* See processEventsWhileBlocked(). */
+int postponeClientRead(client *c);
+int ProcessingEventsWhileBlocked = 0; /* See processEventsWhileBlocked(). */
 
 // /* Return the size consumed from the allocator, for the specified SDS string,
 //  * including internal fragmentation. This function is used in order to compute
@@ -72,17 +72,17 @@
 //     }
 // }
 
-// /* Client.reply list dup and free methods. */
-// void *dupClientReplyValue(void *o) {
-//     clientReplyBlock *old = o;
-//     clientReplyBlock *buf = zmalloc(sizeof(clientReplyBlock) + old->size);
-//     memcpy(buf, o, sizeof(clientReplyBlock) + old->size);
-//     return buf;
-// }
+/* Client.reply list dup and free methods. */
+void *dupClientReplyValue(void *o) {
+    clientReplyBlock *old = o;
+    clientReplyBlock *buf = zmalloc(sizeof(clientReplyBlock) + old->size);
+    memcpy(buf, o, sizeof(clientReplyBlock) + old->size);
+    return buf;
+}
 
-// void freeClientReplyValue(void *o) {
-//     zfree(o);
-// }
+void freeClientReplyValue(void *o) {
+    zfree(o);
+}
 
 int listMatchObjects(void *a, void *b) {
     return equalStringObjects(a,b);
@@ -176,7 +176,7 @@ client *createClient(connection *conn) {
     c->slave_listening_port = 0;
     c->slave_addr = NULL;
     c->slave_capa = SLAVE_CAPA_NONE;
-    c->slave_req = SLAVE_REQ_NONE;
+    // c->slave_req = SLAVE_REQ_NONE;
     c->reply = listCreate();
     c->deferred_reply_errors = NULL;
     c->reply_bytes = 0;
@@ -202,8 +202,8 @@ client *createClient(connection *conn) {
     c->client_list_node = NULL;
     c->postponed_list_node = NULL;
     c->pending_read_list_node = NULL;
-    c->client_tracking_redirection = 0;
-    c->client_tracking_prefixes = NULL;
+    // c->client_tracking_redirection = 0;
+    // c->client_tracking_prefixes = NULL; //debug michael
     c->last_memory_usage = 0;
     c->last_memory_type = CLIENT_TYPE_NORMAL;
     c->auth_callback = NULL;
@@ -1429,26 +1429,28 @@ void unlinkClient(client *c) {
         /* Remove from the list of active clients. */
         if (c->client_list_node) {
             uint64_t id = htonu64(c->id);
-            raxRemove(server.clients_index,(unsigned char*)&id,sizeof(id),NULL);
+            // raxRemove(server.clients_index,(unsigned char*)&id,sizeof(id),NULL); //debug michael
             listDelNode(server.clients,c->client_list_node);
             c->client_list_node = NULL;
         }
 
         /* Check if this is a replica waiting for diskless replication (rdb pipe),
          * in which case it needs to be cleaned from that list */
-        if (c->flags & CLIENT_SLAVE &&
-            c->replstate == SLAVE_STATE_WAIT_BGSAVE_END &&
-            server.rdb_pipe_conns)
-        {
-            int i;
-            for (i=0; i < server.rdb_pipe_numconns; i++) {
-                if (server.rdb_pipe_conns[i] == c->conn) {
-                    rdbPipeWriteHandlerConnRemoved(c->conn);
-                    server.rdb_pipe_conns[i] = NULL;
-                    break;
-                }
-            }
-        }
+        // if (c->flags & CLIENT_SLAVE &&
+        //     c->replstate == SLAVE_STATE_WAIT_BGSAVE_END &&
+        //     server.rdb_pipe_conns)
+        //  if (c->flags & CLIENT_SLAVE  &&
+        //     server.rdb_pipe_conns) //debug michael
+        // {
+        //     int i;
+        //     for (i=0; i < server.rdb_pipe_numconns; i++) {
+        //         if (server.rdb_pipe_conns[i] == c->conn) {
+        //             rdbPipeWriteHandlerConnRemoved(c->conn);
+        //             server.rdb_pipe_conns[i] = NULL;
+        //             break;
+        //         }
+        //     }
+        // }
         /* Only use shutdown when the fork is active and we are the parent. */
         if (server.child_type) connShutdown(c->conn);
         connClose(c->conn);
@@ -1535,8 +1537,8 @@ void freeClient(client *c) {
 
     /* For connected clients, call the disconnection event of modules hooks. */
     if (c->conn) {
-        // moduleFireServerEvent(REDISMODULE_EVENT_CLIENT_CHANGE,
-        //                       REDISMODULE_SUBEVENT_CLIENT_CHANGE_DISCONNECTED,
+        moduleFireServerEvent(REDISMODULE_EVENT_CLIENT_CHANGE,
+                              REDISMODULE_SUBEVENT_CLIENT_CHANGE_DISCONNECTED,
                               c);
     }
 
@@ -1617,18 +1619,18 @@ void freeClient(client *c) {
          * But we also need to check if users enable 'save' RDB, if enable, we
          * should not remove directly since that means RDB is important for users
          * to keep data safe and we may delay configured 'save' for full sync. */
-        if (server.saveparamslen == 0 &&
-            c->replstate == SLAVE_STATE_WAIT_BGSAVE_END &&
-            server.child_type == CHILD_TYPE_RDB &&
-            server.rdb_child_type == RDB_CHILD_TYPE_DISK &&
-            anyOtherSlaveWaitRdb(c) == 0)
-        {
-            killRDBChild();
-        }
-        if (c->replstate == SLAVE_STATE_SEND_BULK) {
-            if (c->repldbfd != -1) close(c->repldbfd);
-            if (c->replpreamble) sdsfree(c->replpreamble);
-        }
+        // if (server.saveparamslen == 0 &&
+        //     c->replstate == SLAVE_STATE_WAIT_BGSAVE_END &&
+        //     server.child_type == CHILD_TYPE_RDB &&
+        //     server.rdb_child_type == RDB_CHILD_TYPE_DISK &&
+        //     anyOtherSlaveWaitRdb(c) == 0)
+        // {
+        //     killRDBChild();
+        // } //debug michael
+        // if (c->replstate == SLAVE_STATE_SEND_BULK) {
+        //     if (c->repldbfd != -1) close(c->repldbfd);
+        //     if (c->replpreamble) sdsfree(c->replpreamble);
+        // } //debug michael
         list *l = (c->flags & CLIENT_MONITOR) ? server.monitors : server.slaves;
         ln = listSearchKey(l,c);
         serverAssert(ln != NULL);
@@ -1636,14 +1638,14 @@ void freeClient(client *c) {
         /* We need to remember the time when we started to have zero
          * attached slaves, as after some time we'll free the replication
          * backlog. */
-        if (getClientType(c) == CLIENT_TYPE_SLAVE && listLength(server.slaves) == 0)
-            server.repl_no_slaves_since = server.unixtime;
+        // if (getClientType(c) == CLIENT_TYPE_SLAVE && listLength(server.slaves) == 0)
+        //     server.repl_no_slaves_since = server.unixtime; //debug michael
         refreshGoodSlavesCount();
         /* Fire the replica change modules event. */
-        if (c->replstate == SLAVE_STATE_ONLINE)
-            moduleFireServerEvent(REDISMODULE_EVENT_REPLICA_CHANGE,
-                                  REDISMODULE_SUBEVENT_REPLICA_CHANGE_OFFLINE,
-                                  NULL);
+        // if (c->replstate == SLAVE_STATE_ONLINE)
+        //     moduleFireServerEvent(REDISMODULE_EVENT_REPLICA_CHANGE,
+        //                           REDISMODULE_SUBEVENT_REPLICA_CHANGE_OFFLINE,
+        //                           NULL); //debug michael
     }
 
     /* Master/slave cleanup Case 2:
@@ -1663,7 +1665,7 @@ void freeClient(client *c) {
     /* Release other dynamically allocated client structure fields,
      * and finally release the client structure itself. */
     if (c->name) decrRefCount(c->name);
-    freeClientMultiState(c);
+    // freeClientMultiState(c); //debug michael
     sdsfree(c->peerid);
     sdsfree(c->sockname);
     sdsfree(c->slave_addr);
@@ -2561,106 +2563,106 @@ void freeClientAsync(client *c) {
 //     return C_OK;
 // }
 
-// void readQueryFromClient(connection *conn) {
-//     client *c = connGetPrivateData(conn);
-//     int nread, big_arg = 0;
-//     size_t qblen, readlen;
+void readQueryFromClient(connection *conn) {
+    client *c = connGetPrivateData(conn);
+    int nread, big_arg = 0;
+    size_t qblen, readlen;
 
-//     /* Check if we want to read from the client later when exiting from
-//      * the event loop. This is the case if threaded I/O is enabled. */
-//     if (postponeClientRead(c)) return;
+    /* Check if we want to read from the client later when exiting from
+     * the event loop. This is the case if threaded I/O is enabled. */
+    if (postponeClientRead(c)) return;
 
-//     /* Update total number of reads on server */
-//     atomicIncr(server.stat_total_reads_processed, 1);
+    /* Update total number of reads on server */
+    atomicIncr(server.stat_total_reads_processed, 1);
 
-//     readlen = PROTO_IOBUF_LEN;
-//     /* If this is a multi bulk request, and we are processing a bulk reply
-//      * that is large enough, try to maximize the probability that the query
-//      * buffer contains exactly the SDS string representing the object, even
-//      * at the risk of requiring more read(2) calls. This way the function
-//      * processMultiBulkBuffer() can avoid copying buffers to create the
-//      * Redis Object representing the argument. */
-//     if (c->reqtype == PROTO_REQ_MULTIBULK && c->multibulklen && c->bulklen != -1
-//         && c->bulklen >= PROTO_MBULK_BIG_ARG)
-//     {
-//         ssize_t remaining = (size_t)(c->bulklen+2)-(sdslen(c->querybuf)-c->qb_pos);
-//         big_arg = 1;
+    readlen = PROTO_IOBUF_LEN;
+    /* If this is a multi bulk request, and we are processing a bulk reply
+     * that is large enough, try to maximize the probability that the query
+     * buffer contains exactly the SDS string representing the object, even
+     * at the risk of requiring more read(2) calls. This way the function
+     * processMultiBulkBuffer() can avoid copying buffers to create the
+     * Redis Object representing the argument. */
+    if (c->reqtype == PROTO_REQ_MULTIBULK && c->multibulklen && c->bulklen != -1
+        && c->bulklen >= PROTO_MBULK_BIG_ARG)
+    {
+        ssize_t remaining = (size_t)(c->bulklen+2)-(sdslen(c->querybuf)-c->qb_pos);
+        big_arg = 1;
 
-//         /* Note that the 'remaining' variable may be zero in some edge case,
-//          * for example once we resume a blocked client after CLIENT PAUSE. */
-//         if (remaining > 0) readlen = remaining;
+        /* Note that the 'remaining' variable may be zero in some edge case,
+         * for example once we resume a blocked client after CLIENT PAUSE. */
+        if (remaining > 0) readlen = remaining;
 
-//         /* Master client needs expand the readlen when meet BIG_ARG(see #9100),
-//          * but doesn't need align to the next arg, we can read more data. */
-//         if (c->flags & CLIENT_MASTER && readlen < PROTO_IOBUF_LEN)
-//             readlen = PROTO_IOBUF_LEN;
-//     }
+        /* Master client needs expand the readlen when meet BIG_ARG(see #9100),
+         * but doesn't need align to the next arg, we can read more data. */
+        if (c->flags & CLIENT_MASTER && readlen < PROTO_IOBUF_LEN)
+            readlen = PROTO_IOBUF_LEN;
+    }
 
-//     qblen = sdslen(c->querybuf);
-//     if (!(c->flags & CLIENT_MASTER) && // master client's querybuf can grow greedy.
-//         (big_arg || sdsalloc(c->querybuf) < PROTO_IOBUF_LEN)) {
-//         /* When reading a BIG_ARG we won't be reading more than that one arg
-//          * into the query buffer, so we don't need to pre-allocate more than we
-//          * need, so using the non-greedy growing. For an initial allocation of
-//          * the query buffer, we also don't wanna use the greedy growth, in order
-//          * to avoid collision with the RESIZE_THRESHOLD mechanism. */
-//         c->querybuf = sdsMakeRoomForNonGreedy(c->querybuf, readlen);
-//     } else {
-//         c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);
+    qblen = sdslen(c->querybuf);
+    if (!(c->flags & CLIENT_MASTER) && // master client's querybuf can grow greedy.
+        (big_arg || sdsalloc(c->querybuf) < PROTO_IOBUF_LEN)) {
+        /* When reading a BIG_ARG we won't be reading more than that one arg
+         * into the query buffer, so we don't need to pre-allocate more than we
+         * need, so using the non-greedy growing. For an initial allocation of
+         * the query buffer, we also don't wanna use the greedy growth, in order
+         * to avoid collision with the RESIZE_THRESHOLD mechanism. */
+        c->querybuf = sdsMakeRoomForNonGreedy(c->querybuf, readlen);
+    } else {
+        c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);
 
-//         /* Read as much as possible from the socket to save read(2) system calls. */
-//         readlen = sdsavail(c->querybuf);
-//     }
-//     nread = connRead(c->conn, c->querybuf+qblen, readlen);
-//     if (nread == -1) {
-//         if (connGetState(conn) == CONN_STATE_CONNECTED) {
-//             return;
-//         } else {
-//             serverLog(LL_VERBOSE, "Reading from client: %s",connGetLastError(c->conn));
-//             freeClientAsync(c);
-//             goto done;
-//         }
-//     } else if (nread == 0) {
-//         if (server.verbosity <= LL_VERBOSE) {
-//             sds info = catClientInfoString(sdsempty(), c);
-//             serverLog(LL_VERBOSE, "Client closed connection %s", info);
-//             sdsfree(info);
-//         }
-//         freeClientAsync(c);
-//         goto done;
-//     }
+        /* Read as much as possible from the socket to save read(2) system calls. */
+        readlen = sdsavail(c->querybuf);
+    }
+    nread = connRead(c->conn, c->querybuf+qblen, readlen);
+    if (nread == -1) {
+        if (connGetState(conn) == CONN_STATE_CONNECTED) {
+            return;
+        } else {
+            serverLog(LL_VERBOSE, "Reading from client: %s",connGetLastError(c->conn));
+            freeClientAsync(c);
+            goto done;
+        }
+    } else if (nread == 0) {
+        if (server.verbosity <= LL_VERBOSE) {
+            sds info = catClientInfoString(sdsempty(), c);
+            serverLog(LL_VERBOSE, "Client closed connection %s", info);
+            sdsfree(info);
+        }
+        freeClientAsync(c);
+        goto done;
+    }
 
-//     sdsIncrLen(c->querybuf,nread);
-//     qblen = sdslen(c->querybuf);
-//     if (c->querybuf_peak < qblen) c->querybuf_peak = qblen;
+    sdsIncrLen(c->querybuf,nread);
+    qblen = sdslen(c->querybuf);
+    if (c->querybuf_peak < qblen) c->querybuf_peak = qblen;
 
-//     c->lastinteraction = server.unixtime;
-//     if (c->flags & CLIENT_MASTER) {
-//         c->read_reploff += nread;
-//         atomicIncr(server.stat_net_repl_input_bytes, nread);
-//     } else {
-//         atomicIncr(server.stat_net_input_bytes, nread);
-//     }
+    c->lastinteraction = server.unixtime;
+    if (c->flags & CLIENT_MASTER) {
+        c->read_reploff += nread;
+        atomicIncr(server.stat_net_repl_input_bytes, nread);
+    } else {
+        atomicIncr(server.stat_net_input_bytes, nread);
+    }
 
-//     if (!(c->flags & CLIENT_MASTER) && sdslen(c->querybuf) > server.client_max_querybuf_len) {
-//         sds ci = catClientInfoString(sdsempty(),c), bytes = sdsempty();
+    if (!(c->flags & CLIENT_MASTER) && sdslen(c->querybuf) > server.client_max_querybuf_len) {
+        sds ci = catClientInfoString(sdsempty(),c), bytes = sdsempty();
 
-//         bytes = sdscatrepr(bytes,c->querybuf,64);
-//         serverLog(LL_WARNING,"Closing client that reached max query buffer length: %s (qbuf initial bytes: %s)", ci, bytes);
-//         sdsfree(ci);
-//         sdsfree(bytes);
-//         freeClientAsync(c);
-//         goto done;
-//     }
+        bytes = sdscatrepr(bytes,c->querybuf,64);
+        serverLog(LL_WARNING,"Closing client that reached max query buffer length: %s (qbuf initial bytes: %s)", ci, bytes);
+        sdsfree(ci);
+        sdsfree(bytes);
+        freeClientAsync(c);
+        goto done;
+    }
 
-//     /* There is more data in the client input buffer, continue parsing it
-//      * and check if there is a full command to execute. */
-//     if (processInputBuffer(c) == C_ERR)
-//          c = NULL;
+    /* There is more data in the client input buffer, continue parsing it
+     * and check if there is a full command to execute. */
+    if (processInputBuffer(c) == C_ERR)
+         c = NULL;
 
-// done:
-//     beforeNextClient(c);
-// }
+done:
+    beforeNextClient(c);
+}
 
 // /* A Redis "Address String" is a colon separated ip:port pair.
 //  * For IPv4 it's in the form x.y.z.k:port, example: "127.0.0.1:1234".
@@ -3989,8 +3991,8 @@ void freeClientAsync(client *c) {
 // pthread_t io_threads[IO_THREADS_MAX_NUM];
 // pthread_mutex_t io_threads_mutex[IO_THREADS_MAX_NUM];
 // threads_pending io_threads_pending[IO_THREADS_MAX_NUM];
-// int io_threads_op;      /* IO_THREADS_OP_IDLE, IO_THREADS_OP_READ or IO_THREADS_OP_WRITE. */ // TODO: should access to this be atomic??!
-
+int io_threads_op;      /* IO_THREADS_OP_IDLE, IO_THREADS_OP_READ or IO_THREADS_OP_WRITE. */ // TODO: should access to this be atomic??!
+// 
 // /* This is the list of clients each thread will serve when threaded I/O is
 //  * used. We spawn io_threads_num-1 threads, since one is the main thread
 //  * itself. */
@@ -4249,20 +4251,20 @@ void freeClientAsync(client *c) {
 //  * This is called by the readable handler of the event loop.
 //  * As a side effect of calling this function the client is put in the
 //  * pending read clients and flagged as such. */
-// int postponeClientRead(client *c) {
-//     if (server.io_threads_active &&
-//         server.io_threads_do_reads &&
-//         !ProcessingEventsWhileBlocked &&
-//         !(c->flags & (CLIENT_MASTER|CLIENT_SLAVE|CLIENT_BLOCKED)) &&
-//         io_threads_op == IO_THREADS_OP_IDLE)
-//     {
-//         listAddNodeHead(server.clients_pending_read,c);
-//         c->pending_read_list_node = listFirst(server.clients_pending_read);
-//         return 1;
-//     } else {
-//         return 0;
-//     }
-// }
+int postponeClientRead(client *c) {
+    if (server.io_threads_active &&
+        server.io_threads_do_reads &&
+        !ProcessingEventsWhileBlocked &&
+        !(c->flags & (CLIENT_MASTER|CLIENT_SLAVE|CLIENT_BLOCKED)) &&
+        io_threads_op == IO_THREADS_OP_IDLE)
+    {
+        listAddNodeHead(server.clients_pending_read,c);
+        c->pending_read_list_node = listFirst(server.clients_pending_read);
+        return 1;
+    } else {
+        return 0;
+    }
+}
 
 // /* When threaded I/O is also enabled for the reading + parsing side, the
 //  * readable handler will just put normal clients into a queue of clients to
