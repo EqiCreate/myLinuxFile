@@ -26,7 +26,8 @@
         "script.h": "c",
         "endianconv.h": "c",
         "stream.h": "c",
-        "rax.h": "c"
+        "rax.h": "c",
+        "linenoise.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

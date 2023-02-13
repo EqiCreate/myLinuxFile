@@ -540,47 +540,47 @@ void *dictFetchValue(dict *d, const void *key) {
 //  * the fingerprint again when the iterator is released.
 //  * If the two fingerprints are different it means that the user of the iterator
 //  * performed forbidden operations against the dictionary while iterating. */
-// unsigned long long dictFingerprint(dict *d) {
-//     unsigned long long integers[6], hash = 0;
-//     int j;
+unsigned long long dictFingerprint(dict *d) {
+    unsigned long long integers[6], hash = 0;
+    int j;
 
-//     integers[0] = (long) d->ht_table[0];
-//     integers[1] = d->ht_size_exp[0];
-//     integers[2] = d->ht_used[0];
-//     integers[3] = (long) d->ht_table[1];
-//     integers[4] = d->ht_size_exp[1];
-//     integers[5] = d->ht_used[1];
+    integers[0] = (long) d->ht_table[0];
+    integers[1] = d->ht_size_exp[0];
+    integers[2] = d->ht_used[0];
+    integers[3] = (long) d->ht_table[1];
+    integers[4] = d->ht_size_exp[1];
+    integers[5] = d->ht_used[1];
 
-//     /* We hash N integers by summing every successive integer with the integer
-//      * hashing of the previous sum. Basically:
-//      *
-//      * Result = hash(hash(hash(int1)+int2)+int3) ...
-//      *
-//      * This way the same set of integers in a different order will (likely) hash
-//      * to a different number. */
-//     for (j = 0; j < 6; j++) {
-//         hash += integers[j];
-//         /* For the hashing step we use Tomas Wang's 64 bit integer hash. */
-//         hash = (~hash) + (hash << 21); // hash = (hash << 21) - hash - 1;
-//         hash = hash ^ (hash >> 24);
-//         hash = (hash + (hash << 3)) + (hash << 8); // hash * 265
-//         hash = hash ^ (hash >> 14);
-//         hash = (hash + (hash << 2)) + (hash << 4); // hash * 21
-//         hash = hash ^ (hash >> 28);
-//         hash = hash + (hash << 31);
-//     }
-//     return hash;
-// }
+    /* We hash N integers by summing every successive integer with the integer
+     * hashing of the previous sum. Basically:
+     *
+     * Result = hash(hash(hash(int1)+int2)+int3) ...
+     *
+     * This way the same set of integers in a different order will (likely) hash
+     * to a different number. */
+    for (j = 0; j < 6; j++) {
+        hash += integers[j];
+        /* For the hashing step we use Tomas Wang's 64 bit integer hash. */
+        hash = (~hash) + (hash << 21); // hash = (hash << 21) - hash - 1;
+        hash = hash ^ (hash >> 24);
+        hash = (hash + (hash << 3)) + (hash << 8); // hash * 265
+        hash = hash ^ (hash >> 14);
+        hash = (hash + (hash << 2)) + (hash << 4); // hash * 21
+        hash = hash ^ (hash >> 28);
+        hash = hash + (hash << 31);
+    }
+    return hash;
+}
 
-// void dictInitIterator(dictIterator *iter, dict *d)
-// {
-//     iter->d = d;
-//     iter->table = 0;
-//     iter->index = -1;
-//     iter->safe = 0;
-//     iter->entry = NULL;
-//     iter->nextEntry = NULL;
-// }
+void dictInitIterator(dictIterator *iter, dict *d)
+{
+    iter->d = d;
+    iter->table = 0;
+    iter->index = -1;
+    iter->safe = 0;
+    iter->entry = NULL;
+    iter->nextEntry = NULL;
+}
 
 // void dictInitSafeIterator(dictIterator *iter, dict *d)
 // {
@@ -588,22 +588,22 @@ void *dictFetchValue(dict *d, const void *key) {
 //     iter->safe = 1;
 // }
 
-// void dictResetIterator(dictIterator *iter)
-// {
-//     if (!(iter->index == -1 && iter->table == 0)) {
-//         if (iter->safe)
-//             dictResumeRehashing(iter->d);
-//         else
-//             assert(iter->fingerprint == dictFingerprint(iter->d));
-//     }
-// }
+void dictResetIterator(dictIterator *iter)
+{
+    if (!(iter->index == -1 && iter->table == 0)) {
+        if (iter->safe)
+            dictResumeRehashing(iter->d);
+        else
+            assert(iter->fingerprint == dictFingerprint(iter->d));
+    }
+}
 
-// dictIterator *dictGetIterator(dict *d)
-// {
-//     dictIterator *iter = zmalloc(sizeof(*iter));
-//     dictInitIterator(iter, d);
-//     return iter;
-// }
+dictIterator *dictGetIterator(dict *d)
+{
+    dictIterator *iter = zmalloc(sizeof(*iter));
+    dictInitIterator(iter, d);
+    return iter;
+}
 
 // dictIterator *dictGetSafeIterator(dict *d) {
 //     dictIterator *i = dictGetIterator(d);
@@ -612,44 +612,44 @@ void *dictFetchValue(dict *d, const void *key) {
 //     return i;
 // }
 
-// dictEntry *dictNext(dictIterator *iter)
-// {
-//     while (1) {
-//         if (iter->entry == NULL) {
-//             if (iter->index == -1 && iter->table == 0) {
-//                 if (iter->safe)
-//                     dictPauseRehashing(iter->d);
-//                 else
-//                     iter->fingerprint = dictFingerprint(iter->d);
-//             }
-//             iter->index++;
-//             if (iter->index >= (long) DICTHT_SIZE(iter->d->ht_size_exp[iter->table])) {
-//                 if (dictIsRehashing(iter->d) && iter->table == 0) {
-//                     iter->table++;
-//                     iter->index = 0;
-//                 } else {
-//                     break;
-//                 }
-//             }
-//             iter->entry = iter->d->ht_table[iter->table][iter->index];
-//         } else {
-//             iter->entry = iter->nextEntry;
-//         }
-//         if (iter->entry) {
-//             /* We need to save the 'next' here, the iterator user
-//              * may delete the entry we are returning. */
-//             iter->nextEntry = iter->entry->next;
-//             return iter->entry;
-//         }
-//     }
-//     return NULL;
-// }
+dictEntry *dictNext(dictIterator *iter)
+{
+    while (1) {
+        if (iter->entry == NULL) {
+            if (iter->index == -1 && iter->table == 0) {
+                if (iter->safe)
+                    dictPauseRehashing(iter->d);
+                else
+                    iter->fingerprint = dictFingerprint(iter->d);
+            }
+            iter->index++;
+            if (iter->index >= (long) DICTHT_SIZE(iter->d->ht_size_exp[iter->table])) {
+                if (dictIsRehashing(iter->d) && iter->table == 0) {
+                    iter->table++;
+                    iter->index = 0;
+                } else {
+                    break;
+                }
+            }
+            iter->entry = iter->d->ht_table[iter->table][iter->index];
+        } else {
+            iter->entry = iter->nextEntry;
+        }
+        if (iter->entry) {
+            /* We need to save the 'next' here, the iterator user
+             * may delete the entry we are returning. */
+            iter->nextEntry = iter->entry->next;
+            return iter->entry;
+        }
+    }
+    return NULL;
+}
 
-// void dictReleaseIterator(dictIterator *iter)
-// {
-//     dictResetIterator(iter);
-//     zfree(iter);
-// }
+void dictReleaseIterator(dictIterator *iter)
+{
+    dictResetIterator(iter);
+    zfree(iter);
+}
 
 // /* Return a random entry from the hash table. Useful to
 //  * implement randomized algorithms */
