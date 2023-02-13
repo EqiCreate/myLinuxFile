@@ -1438,6 +1438,26 @@ typedef struct {
     robj *acl_string; /* cached string represent of ACLs */
 } user;
 
+/* In Redis objects 'robj' structures of type OBJ_MODULE, the value pointer
+ * is set to the following structure, referencing the moduleType structure
+ * in order to work with the value, and at the same time providing a raw
+ * pointer to the value, as created by the module commands operating with
+ * the module type.
+ *
+ * So for example in order to free such a value, it is possible to use
+ * the following code:
+ *
+ *  if (robj->type == OBJ_MODULE) {
+ *      moduleValue *mt = robj->ptr;
+ *      mt->type->free(mt->value);
+ *      zfree(mt); // We need to release this in-the-middle struct as well.
+ *  }
+ */
+typedef struct moduleValue {
+    moduleType *type;
+    void *value;
+} moduleValue;
+
 extern struct redisServer server;
 extern struct sharedObjectsStruct shared;
 extern dictType sdsHashDictType;
@@ -1451,6 +1471,13 @@ extern dictType objectKeyPointerValueDictType;
 /* Keys hashing / comparison functions for dict.c hash tables. */
 uint64_t dictSdsHash(const void *key);
 uint64_t dictSdsCaseHash(const void *key);
+robj *getDecodedObject(robj *o);
+robj *createStringObject(const char *ptr, size_t len);
+robj *createEmbeddedStringObject(const char *ptr, size_t len);
+robj *createRawStringObject(const char *ptr, size_t len);
+void incrRefCount(robj *o);
+
+
 // int dictSdsKeyCompare(dict *d, const void *key1, const void *key2);
 // int dictSdsKeyCaseCompare(dict *d, const void *key1, const void *key2);
 // void dictSdsDestructor(dict *d, void *val);
@@ -1536,6 +1563,8 @@ void decrRefCountVoid(void *o);
 void freeClient(client *c);
 void decrRefCount(robj *o);
 void freeClientMultiState(client *c);
+int islocalClient(client *c);
+
 
 //track.c
 void disableTracking(client *c);

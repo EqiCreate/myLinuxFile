@@ -97,5 +97,6 @@ int main(int argc, char **argv) {
       int firstarg;
     struct timeval tv;
     memset(&config.sslconfig, 0, sizeof(config.sslconfig));
+     printf("client111 %d",argc);
 
 }

@@ -332,11 +332,23 @@ uint64_t dictEncObjHash(const void *key) {
         len = ll2string(buf,32,(long)o->ptr);
         return dictGenHashFunction((unsigned char*)buf, len);
     } else {
-        serverPanic("Unknown string encoding");
+        // serverPanic("Unknown string encoding");//debug michael
+        serverLog(LL_DEBUG,"Unknown string encoding");
     }
 }
 
 
+/* Generic hash table type where keys are Redis Objects, Values
+ * dummy pointers. */
+dictType objectKeyPointerValueDictType = {
+    dictEncObjHash,            /* hash function */
+    NULL,                      /* key dup */
+    NULL,                      /* val dup */
+    dictEncObjKeyCompare,      /* key compare */
+    dictObjectDestructor,      /* key destructor */
+    NULL,                      /* val destructor */
+    NULL                       /* allow to expand */
+};
 
 /* Like objectKeyPointerValueDictType(), but values can be destroyed, if
  * not NULL, calling zfree(). */

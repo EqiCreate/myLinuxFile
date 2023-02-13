@@ -38,7 +38,7 @@
 
 // rax *Users; /* Table mapping usernames to user structures. */
 
-// user *DefaultUser;  /* Global reference to the default user.
+user *DefaultUser;  /* Global reference to the default user.
 //                        Every new connection is associated to it, if no
 //                        AUTH or HELLO is used to authenticate with a
 //                        different user. */
@@ -146,7 +146,7 @@
 // int ACLSetSelector(aclSelector *selector, const char *op, size_t oplen);
 
 // /* The length of the string representation of a hashed password. */
-// #define HASH_PASSWORD_LEN (SHA256_BLOCK_SIZE*2)
+#define HASH_PASSWORD_LEN (SHA256_BLOCK_SIZE*2)
 
 // /* =============================================================================
 //  * Helper functions for the rest of the ACL implementation
@@ -167,41 +167,41 @@
 
 // /* Given an SDS string, returns the SHA256 hex representation as a
 //  * new SDS string. */
-// sds ACLHashPassword(unsigned char *cleartext, size_t len) {
-//     SHA256_CTX ctx;
-//     unsigned char hash[SHA256_BLOCK_SIZE];
-//     char hex[HASH_PASSWORD_LEN];
-//     char *cset = "0123456789abcdef";
+sds ACLHashPassword(unsigned char *cleartext, size_t len) {
+    SHA256_CTX ctx;
+    unsigned char hash[SHA256_BLOCK_SIZE];
+    char hex[HASH_PASSWORD_LEN];
+    char *cset = "0123456789abcdef";
 
-//     sha256_init(&ctx);
-//     sha256_update(&ctx,(unsigned char*)cleartext,len);
-//     sha256_final(&ctx,hash);
+    sha256_init(&ctx);
+    sha256_update(&ctx,(unsigned char*)cleartext,len);
+    sha256_final(&ctx,hash);
 
-//     for (int j = 0; j < SHA256_BLOCK_SIZE; j++) {
-//         hex[j*2] = cset[((hash[j]&0xF0)>>4)];
-//         hex[j*2+1] = cset[(hash[j]&0xF)];
-//     }
-//     return sdsnewlen(hex,HASH_PASSWORD_LEN);
-// }
+    for (int j = 0; j < SHA256_BLOCK_SIZE; j++) {
+        hex[j*2] = cset[((hash[j]&0xF0)>>4)];
+        hex[j*2+1] = cset[(hash[j]&0xF)];
+    }
+    return sdsnewlen(hex,HASH_PASSWORD_LEN);
+}
 
 // /* Given a hash and the hash length, returns C_OK if it is a valid password
 //  * hash, or C_ERR otherwise. */
-// int ACLCheckPasswordHash(unsigned char *hash, int hashlen) {
-//     if (hashlen != HASH_PASSWORD_LEN) {
-//         return C_ERR;
-//     }
+int ACLCheckPasswordHash(unsigned char *hash, int hashlen) {
+    if (hashlen != HASH_PASSWORD_LEN) {
+        return C_ERR;
+    }
 
-//     /* Password hashes can only be characters that represent
-//      * hexadecimal values, which are numbers and lowercase
-//      * characters 'a' through 'f'. */
-//     for(int i = 0; i < HASH_PASSWORD_LEN; i++) {
-//         char c = hash[i];
-//         if ((c < 'a' || c > 'f') && (c < '0' || c > '9')) {
-//             return C_ERR;
-//         }
-//     }
-//     return C_OK;
-// }
+    /* Password hashes can only be characters that represent
+     * hexadecimal values, which are numbers and lowercase
+     * characters 'a' through 'f'. */
+    for(int i = 0; i < HASH_PASSWORD_LEN; i++) {
+        char c = hash[i];
+        if ((c < 'a' || c > 'f') && (c < '0' || c > '9')) {
+            return C_ERR;
+        }
+    }
+    return C_OK;
+}
 
 // /* =============================================================================
 //  * Low level ACL API
@@ -240,19 +240,19 @@
 
 // /* Method for passwords/pattern comparison used for the user->passwords list
 //  * so that we can search for items with listSearchKey(). */
-// int ACLListMatchSds(void *a, void *b) {
-//     return sdscmp(a,b) == 0;
-// }
+int ACLListMatchSds(void *a, void *b) {
+    return sdscmp(a,b) == 0;
+}
 
 // /* Method to free list elements from ACL users password/patterns lists. */
-// void ACLListFreeSds(void *item) {
-//     sdsfree(item);
-// }
+void ACLListFreeSds(void *item) {
+    sdsfree(item);
+}
 
 // /* Method to duplicate list elements from ACL users password/patterns lists. */
-// void *ACLListDupSds(void *item) {
-//     return sdsdup(item);
-// }
+void *ACLListDupSds(void *item) {
+    return sdsdup(item);
+}
 
 // /* Structure used for handling key patterns with different key
 //  * based permissions. */
@@ -384,29 +384,29 @@
 //  * the structure representing the user.
 //  *
 //  * If the user with such name already exists NULL is returned. */
-// user *ACLCreateUser(const char *name, size_t namelen) {
-//     if (raxFind(Users,(unsigned char*)name,namelen) != raxNotFound) return NULL;
-//     user *u = zmalloc(sizeof(*u));
-//     u->name = sdsnewlen(name,namelen);
-//     u->flags = USER_FLAG_DISABLED;
-//     u->flags |= USER_FLAG_SANITIZE_PAYLOAD;
-//     u->passwords = listCreate();
-//     u->acl_string = NULL;
-//     listSetMatchMethod(u->passwords,ACLListMatchSds);
-//     listSetFreeMethod(u->passwords,ACLListFreeSds);
-//     listSetDupMethod(u->passwords,ACLListDupSds);
+user *ACLCreateUser(const char *name, size_t namelen) {
+    // if (raxFind(Users,(unsigned char*)name,namelen) != raxNotFound) return NULL;
+    user *u = zmalloc(sizeof(*u));
+    u->name = sdsnewlen(name,namelen);
+    u->flags = USER_FLAG_DISABLED;
+    u->flags |= USER_FLAG_SANITIZE_PAYLOAD;
+    u->passwords = listCreate();
+    u->acl_string = NULL;
+    listSetMatchMethod(u->passwords,ACLListMatchSds);
+    listSetFreeMethod(u->passwords,ACLListFreeSds);
+    listSetDupMethod(u->passwords,ACLListDupSds);
 
-//     u->selectors = listCreate();
-//     listSetFreeMethod(u->selectors,ACLListFreeSelector);
-//     listSetDupMethod(u->selectors,ACLListDuplicateSelector);
+    u->selectors = listCreate();
+    // listSetFreeMethod(u->selectors,ACLListFreeSelector);
+    // listSetDupMethod(u->selectors,ACLListDuplicateSelector);
 
-//     /* Add the initial root selector */
-//     aclSelector *s = ACLCreateSelector(SELECTOR_FLAG_ROOT);
-//     listAddNodeHead(u->selectors, s);
+    /* Add the initial root selector */
+    // aclSelector *s = ACLCreateSelector(SELECTOR_FLAG_ROOT);
+    // listAddNodeHead(u->selectors, s);
 
-//     raxInsert(Users,(unsigned char*)name,namelen,u,NULL);
-//     return u;
-// }
+    // raxInsert(Users,(unsigned char*)name,namelen,u,NULL); //debug michael
+    return u;
+}
 
 // /* This function should be called when we need an unlinked "fake" user
 //  * we can use in order to validate ACL rules or for other similar reasons.
@@ -1208,107 +1208,108 @@
 //  * EBADMSG: The hash you are trying to add is not a valid hash.
 //  * ECHILD: Attempt to allow a specific first argument of a subcommand
 //  */
-// int ACLSetUser(user *u, const char *op, ssize_t oplen) {
-//     /* as we are changing the ACL, the old generated string is now invalid */
-//     if (u->acl_string) {
-//         decrRefCount(u->acl_string);
-//         u->acl_string = NULL;
-//     }
+int ACLSetUser(user *u, const char *op, ssize_t oplen) {
+    /* as we are changing the ACL, the old generated string is now invalid */
+    if (u->acl_string) {
+        decrRefCount(u->acl_string);
+        u->acl_string = NULL;
+    }
 
-//     if (oplen == -1) oplen = strlen(op);
-//     if (oplen == 0) return C_OK; /* Empty string is a no-operation. */
-//     if (!strcasecmp(op,"on")) {
-//         u->flags |= USER_FLAG_ENABLED;
-//         u->flags &= ~USER_FLAG_DISABLED;
-//     } else if (!strcasecmp(op,"off")) {
-//         u->flags |= USER_FLAG_DISABLED;
-//         u->flags &= ~USER_FLAG_ENABLED;
-//     } else if (!strcasecmp(op,"skip-sanitize-payload")) {
-//         u->flags |= USER_FLAG_SANITIZE_PAYLOAD_SKIP;
-//         u->flags &= ~USER_FLAG_SANITIZE_PAYLOAD;
-//     } else if (!strcasecmp(op,"sanitize-payload")) {
-//         u->flags &= ~USER_FLAG_SANITIZE_PAYLOAD_SKIP;
-//         u->flags |= USER_FLAG_SANITIZE_PAYLOAD;
-//     } else if (!strcasecmp(op,"nopass")) {
-//         u->flags |= USER_FLAG_NOPASS;
-//         listEmpty(u->passwords);
-//     } else if (!strcasecmp(op,"resetpass")) {
-//         u->flags &= ~USER_FLAG_NOPASS;
-//         listEmpty(u->passwords);
-//     } else if (op[0] == '>' || op[0] == '#') {
-//         sds newpass;
-//         if (op[0] == '>') {
-//             newpass = ACLHashPassword((unsigned char*)op+1,oplen-1);
-//         } else {
-//             if (ACLCheckPasswordHash((unsigned char*)op+1,oplen-1) == C_ERR) {
-//                 errno = EBADMSG;
-//                 return C_ERR;
-//             }
-//             newpass = sdsnewlen(op+1,oplen-1);
-//         }
+    if (oplen == -1) oplen = strlen(op);
+    if (oplen == 0) return C_OK; /* Empty string is a no-operation. */
+    if (!strcasecmp(op,"on")) {
+        u->flags |= USER_FLAG_ENABLED;
+        u->flags &= ~USER_FLAG_DISABLED;
+    } else if (!strcasecmp(op,"off")) {
+        u->flags |= USER_FLAG_DISABLED;
+        u->flags &= ~USER_FLAG_ENABLED;
+    } else if (!strcasecmp(op,"skip-sanitize-payload")) {
+        u->flags |= USER_FLAG_SANITIZE_PAYLOAD_SKIP;
+        u->flags &= ~USER_FLAG_SANITIZE_PAYLOAD;
+    } else if (!strcasecmp(op,"sanitize-payload")) {
+        u->flags &= ~USER_FLAG_SANITIZE_PAYLOAD_SKIP;
+        u->flags |= USER_FLAG_SANITIZE_PAYLOAD;
+    } else if (!strcasecmp(op,"nopass")) {
+        u->flags |= USER_FLAG_NOPASS;
+        listEmpty(u->passwords);
+    } else if (!strcasecmp(op,"resetpass")) {
+        u->flags &= ~USER_FLAG_NOPASS;
+        listEmpty(u->passwords);
+    } else if (op[0] == '>' || op[0] == '#') {
+        sds newpass;
+        if (op[0] == '>') {
+            newpass = ACLHashPassword((unsigned char*)op+1,oplen-1);
+        } else {
+            if (ACLCheckPasswordHash((unsigned char*)op+1,oplen-1) == C_ERR) {
+                errno = EBADMSG;
+                return C_ERR;
+            }
+            newpass = sdsnewlen(op+1,oplen-1);
+        }
 
-//         listNode *ln = listSearchKey(u->passwords,newpass);
-//         /* Avoid re-adding the same password multiple times. */
-//         if (ln == NULL)
-//             listAddNodeTail(u->passwords,newpass);
-//         else
-//             sdsfree(newpass);
-//         u->flags &= ~USER_FLAG_NOPASS;
-//     } else if (op[0] == '<' || op[0] == '!') {
-//         sds delpass;
-//         if (op[0] == '<') {
-//             delpass = ACLHashPassword((unsigned char*)op+1,oplen-1);
-//         } else {
-//             if (ACLCheckPasswordHash((unsigned char*)op+1,oplen-1) == C_ERR) {
-//                 errno = EBADMSG;
-//                 return C_ERR;
-//             }
-//             delpass = sdsnewlen(op+1,oplen-1);
-//         }
-//         listNode *ln = listSearchKey(u->passwords,delpass);
-//         sdsfree(delpass);
-//         if (ln) {
-//             listDelNode(u->passwords,ln);
-//         } else {
-//             errno = ENODEV;
-//             return C_ERR;
-//         }
-//     } else if (op[0] == '(' && op[oplen - 1] == ')') {
-//         aclSelector *selector = aclCreateSelectorFromOpSet(op, oplen);
-//         if (!selector) {
-//             /* No errorno set, propagate it from interior error. */
-//             return C_ERR;
-//         }
-//         listAddNodeTail(u->selectors, selector);
-//         return C_OK;
-//     } else if (!strcasecmp(op,"clearselectors")) {
-//         listIter li;
-//         listNode *ln;
-//         listRewind(u->selectors,&li);
-//         /* There has to be a root selector */
-//         serverAssert(listNext(&li));
-//         while((ln = listNext(&li))) {
-//             listDelNode(u->selectors, ln);
-//         }
-//         return C_OK;
-//     } else if (!strcasecmp(op,"reset")) {
-//         serverAssert(ACLSetUser(u,"resetpass",-1) == C_OK);
-//         serverAssert(ACLSetUser(u,"resetkeys",-1) == C_OK);
-//         serverAssert(ACLSetUser(u,"resetchannels",-1) == C_OK);
-//         if (server.acl_pubsub_default & SELECTOR_FLAG_ALLCHANNELS)
-//             serverAssert(ACLSetUser(u,"allchannels",-1) == C_OK);
-//         serverAssert(ACLSetUser(u,"off",-1) == C_OK);
-//         serverAssert(ACLSetUser(u,"sanitize-payload",-1) == C_OK);
-//         serverAssert(ACLSetUser(u,"clearselectors",-1) == C_OK);
-//         serverAssert(ACLSetUser(u,"-@all",-1) == C_OK);
-//     } else {
-//         aclSelector *selector = ACLUserGetRootSelector(u);
-//         if (ACLSetSelector(selector, op, oplen) == C_ERR) {
-//             return C_ERR;
-//         }
-//     }
-//     return C_OK;
-// }
+        listNode *ln = listSearchKey(u->passwords,newpass);
+        /* Avoid re-adding the same password multiple times. */
+        if (ln == NULL)
+            listAddNodeTail(u->passwords,newpass);
+        else
+            sdsfree(newpass);
+        u->flags &= ~USER_FLAG_NOPASS;
+    } 
+    // else if (op[0] == '<' || op[0] == '!') {
+    //     sds delpass;
+    //     if (op[0] == '<') {
+    //         delpass = ACLHashPassword((unsigned char*)op+1,oplen-1);
+    //     } else {
+    //         if (ACLCheckPasswordHash((unsigned char*)op+1,oplen-1) == C_ERR) {
+    //             errno = EBADMSG;
+    //             return C_ERR;
+    //         }
+    //         delpass = sdsnewlen(op+1,oplen-1);
+    //     }
+    //     listNode *ln = listSearchKey(u->passwords,delpass);
+    //     sdsfree(delpass);
+    //     if (ln) {
+    //         listDelNode(u->passwords,ln);
+    //     } else {
+    //         errno = ENODEV;
+    //         return C_ERR;
+    //     }
+    // } else if (op[0] == '(' && op[oplen - 1] == ')') {
+    //     aclSelector *selector = aclCreateSelectorFromOpSet(op, oplen);
+    //     if (!selector) {
+    //         /* No errorno set, propagate it from interior error. */
+    //         return C_ERR;
+    //     }
+    //     listAddNodeTail(u->selectors, selector);
+    //     return C_OK;
+    // } else if (!strcasecmp(op,"clearselectors")) {
+    //     listIter li;
+    //     listNode *ln;
+    //     listRewind(u->selectors,&li);
+    //     /* There has to be a root selector */
+    //     serverAssert(listNext(&li));
+    //     while((ln = listNext(&li))) {
+    //         listDelNode(u->selectors, ln);
+    //     }
+    //     return C_OK;
+    // } else if (!strcasecmp(op,"reset")) {
+    //     serverAssert(ACLSetUser(u,"resetpass",-1) == C_OK);
+    //     serverAssert(ACLSetUser(u,"resetkeys",-1) == C_OK);
+    //     serverAssert(ACLSetUser(u,"resetchannels",-1) == C_OK);
+    //     if (server.acl_pubsub_default & SELECTOR_FLAG_ALLCHANNELS)
+    //         serverAssert(ACLSetUser(u,"allchannels",-1) == C_OK);
+    //     serverAssert(ACLSetUser(u,"off",-1) == C_OK);
+    //     serverAssert(ACLSetUser(u,"sanitize-payload",-1) == C_OK);
+    //     serverAssert(ACLSetUser(u,"clearselectors",-1) == C_OK);
+    //     serverAssert(ACLSetUser(u,"-@all",-1) == C_OK);
+    // } else {
+    //     aclSelector *selector = ACLUserGetRootSelector(u);
+    //     if (ACLSetSelector(selector, op, oplen) == C_ERR) {
+    //         return C_ERR;
+    //     }
+    // }
+    return C_OK;
+}
 
 // /* Return a description of the error that occurred in ACLSetUser() according to
 //  * the errno value set by the function on error. */
@@ -1343,15 +1344,15 @@ const char *ACLSetUserStringError(void) {
 }
 
 // /* Create the default user, this has special permissions. */
-// user *ACLCreateDefaultUser(void) {
-//     user *new = ACLCreateUser("default",7);
-//     ACLSetUser(new,"+@all",-1);
-//     ACLSetUser(new,"~*",-1);
-//     ACLSetUser(new,"&*",-1);
-//     ACLSetUser(new,"on",-1);
-//     ACLSetUser(new,"nopass",-1);
-//     return new;
-// }
+user *ACLCreateDefaultUser(void) {
+    user *new = ACLCreateUser("default",7);
+    ACLSetUser(new,"+@all",-1);
+    ACLSetUser(new,"~*",-1);
+    ACLSetUser(new,"&*",-1);
+    ACLSetUser(new,"on",-1);
+    ACLSetUser(new,"nopass",-1);
+    return new;
+}
 
 // /* Initialization of the ACL subsystem. */
 void ACLInit(void) {
@@ -1359,7 +1360,7 @@ void ACLInit(void) {
     // UsersToLoad = listCreate();
     // listSetMatchMethod(UsersToLoad, ACLListMatchLoadedUser);
     // ACLLog = listCreate();
-    // DefaultUser = ACLCreateDefaultUser();
+    DefaultUser = ACLCreateDefaultUser();
 }
 
 // /* Check the username and password pair and return C_OK if they are valid,

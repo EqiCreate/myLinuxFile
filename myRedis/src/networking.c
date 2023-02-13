@@ -215,7 +215,7 @@ client *createClient(connection *conn) {
     c->mem_usage_bucket = NULL;
     c->mem_usage_bucket_node = NULL;
     if (conn) linkClient(c);
-    initClientMultiState(c);
+    // initClientMultiState(c); //debug michael
     return c;
 }
 
@@ -1221,16 +1221,16 @@ client *createClient(connection *conn) {
 // }
 
 // /* Return true if client connected from loopback interface */
-// int islocalClient(client *c) {
-//     /* unix-socket */
-//     if (c->flags & CLIENT_UNIX_SOCKET) return 1;
+int islocalClient(client *c) {
+    /* unix-socket */
+    if (c->flags & CLIENT_UNIX_SOCKET) return 1;
 
-//     /* tcp */
-//     char cip[NET_IP_STR_LEN+1] = { 0 };
-//     connAddrPeerName(c->conn, cip, sizeof(cip)-1, NULL);
+    /* tcp */
+    char cip[NET_IP_STR_LEN+1] = { 0 };
+    connAddrPeerName(c->conn, cip, sizeof(cip)-1, NULL);
 
-//     return !strcmp(cip,"127.0.0.1") || !strcmp(cip,"::1");
-// }
+    return !strcmp(cip,"127.0.0.1") || !strcmp(cip,"::1");
+}
 
 void clientAcceptHandler(connection *conn) {
     client *c = connGetPrivateData(conn);
@@ -1281,9 +1281,9 @@ void clientAcceptHandler(connection *conn) {
     }
 
     server.stat_numconnections++;
-    moduleFireServerEvent(REDISMODULE_EVENT_CLIENT_CHANGE,
-                          REDISMODULE_SUBEVENT_CLIENT_CHANGE_CONNECTED,
-                          c);
+    // moduleFireServerEvent(REDISMODULE_EVENT_CLIENT_CHANGE,
+    //                       REDISMODULE_SUBEVENT_CLIENT_CHANGE_CONNECTED,
+    //                       c); //debug michael
 }
 
 void acceptCommonHandler(connection *conn, int flags, char *ip) {
@@ -1359,28 +1359,28 @@ void acceptCommonHandler(connection *conn, int flags, char *ip) {
     }
 }
 
-// void freeClientOriginalArgv(client *c) {
-//     /* We didn't rewrite this client */
-//     if (!c->original_argv) return;
+void freeClientOriginalArgv(client *c) {
+    /* We didn't rewrite this client */
+    if (!c->original_argv) return;
 
-//     for (int j = 0; j < c->original_argc; j++)
-//         decrRefCount(c->original_argv[j]);
-//     zfree(c->original_argv);
-//     c->original_argv = NULL;
-//     c->original_argc = 0;
-// }
+    for (int j = 0; j < c->original_argc; j++)
+        decrRefCount(c->original_argv[j]);
+    zfree(c->original_argv);
+    c->original_argv = NULL;
+    c->original_argc = 0;
+}
 
-// void freeClientArgv(client *c) {
-//     int j;
-//     for (j = 0; j < c->argc; j++)
-//         decrRefCount(c->argv[j]);
-//     c->argc = 0;
-//     c->cmd = NULL;
-//     c->argv_len_sum = 0;
-//     c->argv_len = 0;
-//     zfree(c->argv);
-//     c->argv = NULL;
-// }
+void freeClientArgv(client *c) {
+    int j;
+    for (j = 0; j < c->argc; j++)
+        decrRefCount(c->argv[j]);
+    c->argc = 0;
+    c->cmd = NULL;
+    c->argv_len_sum = 0;
+    c->argv_len = 0;
+    zfree(c->argv);
+    c->argv = NULL;
+}
 
 // /* Close all the slaves connections. This is useful in chained replication
 //  * when we resync with our own master and want to force all our slaves to
@@ -1536,14 +1536,14 @@ void freeClient(client *c) {
     }
 
     /* For connected clients, call the disconnection event of modules hooks. */
-    if (c->conn) {
-        moduleFireServerEvent(REDISMODULE_EVENT_CLIENT_CHANGE,
-                              REDISMODULE_SUBEVENT_CLIENT_CHANGE_DISCONNECTED,
-                              c);
-    }
+    // if (c->conn) {
+    //     moduleFireServerEvent(REDISMODULE_EVENT_CLIENT_CHANGE,
+    //                           REDISMODULE_SUBEVENT_CLIENT_CHANGE_DISCONNECTED,
+    //                           c);
+    // } //debug michael
 
     /* Notify module system that this client auth status changed. */
-    moduleNotifyUserChanged(c);
+    // moduleNotifyUserChanged(c); //debug michael
 
     /* If this client was scheduled for async freeing we need to remove it
      * from the queue. Note that we need to do this here, because later
@@ -1564,33 +1564,33 @@ void freeClient(client *c) {
         serverLog(LL_WARNING,"Connection with master lost.");
         if (!(c->flags & (CLIENT_PROTOCOL_ERROR|CLIENT_BLOCKED))) {
             c->flags &= ~(CLIENT_CLOSE_ASAP|CLIENT_CLOSE_AFTER_REPLY);
-            replicationCacheMaster(c);
+            // replicationCacheMaster(c); // debug  michael
             return;
         }
     }
 
     /* Log link disconnection with slave */
-    if (getClientType(c) == CLIENT_TYPE_SLAVE) {
-        serverLog(LL_WARNING,"Connection with replica %s lost.",
-            replicationGetSlaveName(c));
-    }
+    // if (getClientType(c) == CLIENT_TYPE_SLAVE) {
+    //     serverLog(LL_WARNING,"Connection with replica %s lost.",
+    //         replicationGetSlaveName(c));
+    // } //debug michael
 
     /* Free the query buffer */
     sdsfree(c->querybuf);
     c->querybuf = NULL;
 
     /* Deallocate structures used to block on blocking ops. */
-    if (c->flags & CLIENT_BLOCKED) unblockClient(c);
+    // if (c->flags & CLIENT_BLOCKED) unblockClient(c); //debug michael
     dictRelease(c->bpop.keys);
 
     /* UNWATCH all the keys */
-    unwatchAllKeys(c);
+    // unwatchAllKeys(c); //debug michael
     listRelease(c->watched_keys);
 
     /* Unsubscribe from all the pubsub channels */
-    pubsubUnsubscribeAllChannels(c,0);
-    pubsubUnsubscribeShardAllChannels(c, 0);
-    pubsubUnsubscribeAllPatterns(c,0);
+    // pubsubUnsubscribeAllChannels(c,0); //debug michael
+    // pubsubUnsubscribeShardAllChannels(c, 0); //debug michael
+    // pubsubUnsubscribeAllPatterns(c,0); //debug michael
     dictRelease(c->pubsub_channels);
     listRelease(c->pubsub_patterns);
     dictRelease(c->pubsubshard_channels);
@@ -1598,7 +1598,7 @@ void freeClient(client *c) {
     /* Free data structures. */
     listRelease(c->reply);
     zfree(c->buf);
-    freeReplicaReferencedReplBuffer(c);
+    // freeReplicaReferencedReplBuffer(c); //debug michael
     freeClientArgv(c);
     freeClientOriginalArgv(c);
     if (c->deferred_reply_errors)
@@ -1640,7 +1640,7 @@ void freeClient(client *c) {
          * backlog. */
         // if (getClientType(c) == CLIENT_TYPE_SLAVE && listLength(server.slaves) == 0)
         //     server.repl_no_slaves_since = server.unixtime; //debug michael
-        refreshGoodSlavesCount();
+        // refreshGoodSlavesCount(); //debug michael
         /* Fire the replica change modules event. */
         // if (c->replstate == SLAVE_STATE_ONLINE)
         //     moduleFireServerEvent(REDISMODULE_EVENT_REPLICA_CHANGE,
@@ -1650,7 +1650,7 @@ void freeClient(client *c) {
 
     /* Master/slave cleanup Case 2:
      * we lost the connection with the master. */
-    if (c->flags & CLIENT_MASTER) replicationHandleMasterDisconnection();
+    // if (c->flags & CLIENT_MASTER) replicationHandleMasterDisconnection(); //debug michael
 
     /* Remove the contribution that this client gave to our
      * incrementally computed memory usage. */
@@ -1717,22 +1717,22 @@ void freeClientAsync(client *c) {
 //  * return C_ERR in case client is no longer valid after call.
 //  * The input client argument: c, may be NULL in case the previous client was
 //  * freed before the call. */
-// int beforeNextClient(client *c) {
-//     /* Skip the client processing if we're in an IO thread, in that case we'll perform
-//        this operation later (this function is called again) in the fan-in stage of the threading mechanism */
-//     if (io_threads_op != IO_THREADS_OP_IDLE)
-//         return C_OK;
-//     /* Handle async frees */
-//     /* Note: this doesn't make the server.clients_to_close list redundant because of
-//      * cases where we want an async free of a client other than myself. For example
-//      * in ACL modifications we disconnect clients authenticated to non-existent
-//      * users (see ACL LOAD). */
-//     if (c && (c->flags & CLIENT_CLOSE_ASAP)) {
-//         freeClient(c);
-//         return C_ERR;
-//     }
-//     return C_OK;
-// }
+int beforeNextClient(client *c) {
+    /* Skip the client processing if we're in an IO thread, in that case we'll perform
+       this operation later (this function is called again) in the fan-in stage of the threading mechanism */
+    if (io_threads_op != IO_THREADS_OP_IDLE)
+        return C_OK;
+    /* Handle async frees */
+    /* Note: this doesn't make the server.clients_to_close list redundant because of
+     * cases where we want an async free of a client other than myself. For example
+     * in ACL modifications we disconnect clients authenticated to non-existent
+     * users (see ACL LOAD). */
+    if (c && (c->flags & CLIENT_CLOSE_ASAP)) {
+        freeClient(c);
+        return C_ERR;
+    }
+    return C_OK;
+}
 
 // /* Free the clients marked as CLOSE_ASAP, return the number of clients
 //  * freed. */
@@ -2623,11 +2623,11 @@ void readQueryFromClient(connection *conn) {
             goto done;
         }
     } else if (nread == 0) {
-        if (server.verbosity <= LL_VERBOSE) {
-            sds info = catClientInfoString(sdsempty(), c);
-            serverLog(LL_VERBOSE, "Client closed connection %s", info);
-            sdsfree(info);
-        }
+        // if (server.verbosity <= LL_VERBOSE) {
+        //     sds info = catClientInfoString(sdsempty(), c);
+        //     serverLog(LL_VERBOSE, "Client closed connection %s", info);
+        //     sdsfree(info);
+        // } //debug michael
         freeClientAsync(c);
         goto done;
     }
@@ -2644,21 +2644,21 @@ void readQueryFromClient(connection *conn) {
         atomicIncr(server.stat_net_input_bytes, nread);
     }
 
-    if (!(c->flags & CLIENT_MASTER) && sdslen(c->querybuf) > server.client_max_querybuf_len) {
-        sds ci = catClientInfoString(sdsempty(),c), bytes = sdsempty();
+    // if (!(c->flags & CLIENT_MASTER) && sdslen(c->querybuf) > server.client_max_querybuf_len) {
+    //     sds ci = catClientInfoString(sdsempty(),c), bytes = sdsempty();
 
-        bytes = sdscatrepr(bytes,c->querybuf,64);
-        serverLog(LL_WARNING,"Closing client that reached max query buffer length: %s (qbuf initial bytes: %s)", ci, bytes);
-        sdsfree(ci);
-        sdsfree(bytes);
-        freeClientAsync(c);
-        goto done;
-    }
+    //     bytes = sdscatrepr(bytes,c->querybuf,64);
+    //     serverLog(LL_WARNING,"Closing client that reached max query buffer length: %s (qbuf initial bytes: %s)", ci, bytes);
+    //     sdsfree(ci);
+    //     sdsfree(bytes);
+    //     freeClientAsync(c);
+    //     goto done;
+    // }  //debug michael
 
     /* There is more data in the client input buffer, continue parsing it
      * and check if there is a full command to execute. */
-    if (processInputBuffer(c) == C_ERR)
-         c = NULL;
+    // if (processInputBuffer(c) == C_ERR)
+        //  c = NULL;  //debug michael
 
 done:
     beforeNextClient(c);

@@ -10893,76 +10893,76 @@
 // //  *
 // //  * 'eid' and 'subid' are just the main event ID and the sub event associated
 // //  * with the event, depending on what exactly happened. */
-// // void moduleFireServerEvent(uint64_t eid, int subid, void *data) {
-// //     /* Fast path to return ASAP if there is nothing to do, avoiding to
-// //      * setup the iterator and so forth: we want this call to be extremely
-// //      * cheap if there are no registered modules. */
-// //     if (listLength(RedisModule_EventListeners) == 0) return;
+void moduleFireServerEvent(uint64_t eid, int subid, void *data) {
+    /* Fast path to return ASAP if there is nothing to do, avoiding to
+     * setup the iterator and so forth: we want this call to be extremely
+     * cheap if there are no registered modules. */
+    // if (listLength(RedisModule_EventListeners) == 0) return;
 
-// //     listIter li;
-// //     listNode *ln;
-// //     listRewind(RedisModule_EventListeners,&li);
-// //     while((ln = listNext(&li))) {
-// //         RedisModuleEventListener *el = ln->value;
-// //         if (el->event.id == eid) {
-// //             RedisModuleCtx ctx;
-// //             if (eid == REDISMODULE_EVENT_CLIENT_CHANGE) {
-// //                 /* In the case of client changes, we're pushing the real client
-// //                  * so the event handler can mutate it if needed. For example,
-// //                  * to change its authentication state in a way that does not
-// //                  * depend on specific commands executed later.
-// //                  */
-// //                 moduleCreateContext(&ctx,el->module,REDISMODULE_CTX_NONE);
-// //                 ctx.client = (client *) data;
-// //             } else {
-// //                 moduleCreateContext(&ctx,el->module,REDISMODULE_CTX_TEMP_CLIENT);
-// //             }
+    // listIter li;
+    // listNode *ln;
+    // listRewind(RedisModule_EventListeners,&li);
+    // while((ln = listNext(&li))) {
+    //     RedisModuleEventListener *el = ln->value;
+    //     if (el->event.id == eid) {
+    //         RedisModuleCtx ctx;
+    //         if (eid == REDISMODULE_EVENT_CLIENT_CHANGE) {
+    //             /* In the case of client changes, we're pushing the real client
+    //              * so the event handler can mutate it if needed. For example,
+    //              * to change its authentication state in a way that does not
+    //              * depend on specific commands executed later.
+    //              */
+    //             moduleCreateContext(&ctx,el->module,REDISMODULE_CTX_NONE);
+    //             ctx.client = (client *) data;
+    //         } else {
+    //             moduleCreateContext(&ctx,el->module,REDISMODULE_CTX_TEMP_CLIENT);
+    //         }
 
-// //             void *moduledata = NULL;
-// //             RedisModuleClientInfoV1 civ1;
-// //             RedisModuleReplicationInfoV1 riv1;
-// //             RedisModuleModuleChangeV1 mcv1;
+    //         void *moduledata = NULL;
+    //         RedisModuleClientInfoV1 civ1;
+    //         RedisModuleReplicationInfoV1 riv1;
+    //         RedisModuleModuleChangeV1 mcv1;
 
-// //             /* Event specific context and data pointer setup. */
-// //             if (eid == REDISMODULE_EVENT_CLIENT_CHANGE) {
-// //                 serverAssert(modulePopulateClientInfoStructure(&civ1,data, el->event.dataver) == REDISMODULE_OK);
-// //                 moduledata = &civ1;
-// //             } else if (eid == REDISMODULE_EVENT_REPLICATION_ROLE_CHANGED) {
-// //                 serverAssert(modulePopulateReplicationInfoStructure(&riv1,el->event.dataver) == REDISMODULE_OK);
-// //                 moduledata = &riv1;
-// //             } else if (eid == REDISMODULE_EVENT_FLUSHDB) {
-// //                 moduledata = data;
-// //                 RedisModuleFlushInfoV1 *fi = data;
-// //                 if (fi->dbnum != -1)
-// //                     selectDb(ctx.client, fi->dbnum);
-// //             } else if (eid == REDISMODULE_EVENT_MODULE_CHANGE) {
-// //                 RedisModule *m = data;
-// //                 if (m == el->module) {
-// //                     moduleFreeContext(&ctx);
-// //                     continue;
-// //                 }
-// //                 mcv1.version = REDISMODULE_MODULE_CHANGE_VERSION;
-// //                 mcv1.module_name = m->name;
-// //                 mcv1.module_version = m->ver;
-// //                 moduledata = &mcv1;
-// //             } else if (eid == REDISMODULE_EVENT_LOADING_PROGRESS) {
-// //                 moduledata = data;
-// //             } else if (eid == REDISMODULE_EVENT_CRON_LOOP) {
-// //                 moduledata = data;
-// //             } else if (eid == REDISMODULE_EVENT_SWAPDB) {
-// //                 moduledata = data;
-// //             } else if (eid == REDISMODULE_EVENT_CONFIG) {
-// //                 moduledata = data;
-// //             }
+    //         /* Event specific context and data pointer setup. */
+    //         if (eid == REDISMODULE_EVENT_CLIENT_CHANGE) {
+    //             serverAssert(modulePopulateClientInfoStructure(&civ1,data, el->event.dataver) == REDISMODULE_OK);
+    //             moduledata = &civ1;
+    //         } else if (eid == REDISMODULE_EVENT_REPLICATION_ROLE_CHANGED) {
+    //             serverAssert(modulePopulateReplicationInfoStructure(&riv1,el->event.dataver) == REDISMODULE_OK);
+    //             moduledata = &riv1;
+    //         } else if (eid == REDISMODULE_EVENT_FLUSHDB) {
+    //             moduledata = data;
+    //             RedisModuleFlushInfoV1 *fi = data;
+    //             if (fi->dbnum != -1)
+    //                 selectDb(ctx.client, fi->dbnum);
+    //         } else if (eid == REDISMODULE_EVENT_MODULE_CHANGE) {
+    //             RedisModule *m = data;
+    //             if (m == el->module) {
+    //                 moduleFreeContext(&ctx);
+    //                 continue;
+    //             }
+    //             mcv1.version = REDISMODULE_MODULE_CHANGE_VERSION;
+    //             mcv1.module_name = m->name;
+    //             mcv1.module_version = m->ver;
+    //             moduledata = &mcv1;
+    //         } else if (eid == REDISMODULE_EVENT_LOADING_PROGRESS) {
+    //             moduledata = data;
+    //         } else if (eid == REDISMODULE_EVENT_CRON_LOOP) {
+    //             moduledata = data;
+    //         } else if (eid == REDISMODULE_EVENT_SWAPDB) {
+    //             moduledata = data;
+    //         } else if (eid == REDISMODULE_EVENT_CONFIG) {
+    //             moduledata = data;
+    //         }
 
-// //             el->module->in_hook++;
-// //             el->callback(&ctx,el->event,subid,moduledata);
-// //             el->module->in_hook--;
+    //         el->module->in_hook++;
+    //         el->callback(&ctx,el->event,subid,moduledata);
+    //         el->module->in_hook--;
 
-// //             moduleFreeContext(&ctx);
-// //         }
-// //     }
-// // }
+    //         moduleFreeContext(&ctx);
+    //     }
+    // }
+}
 
 // // /* Remove all the listeners for this module: this is used before unloading
 // //  * a module. */

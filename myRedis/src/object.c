@@ -75,40 +75,40 @@ robj *createObject(int type, void *ptr) {
 
 // /* Create a string object with encoding OBJ_ENCODING_RAW, that is a plain
 //  * string object where o->ptr points to a proper sds string. */
-// robj *createRawStringObject(const char *ptr, size_t len) {
-//     return createObject(OBJ_STRING, sdsnewlen(ptr,len));
-// }
+robj *createRawStringObject(const char *ptr, size_t len) {
+    return createObject(OBJ_STRING, sdsnewlen(ptr,len));
+}
 
 // /* Create a string object with encoding OBJ_ENCODING_EMBSTR, that is
 //  * an object where the sds string is actually an unmodifiable string
 //  * allocated in the same chunk as the object itself. */
-// robj *createEmbeddedStringObject(const char *ptr, size_t len) {
-//     robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr8)+len+1);
-//     struct sdshdr8 *sh = (void*)(o+1);
+robj *createEmbeddedStringObject(const char *ptr, size_t len) {
+    robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr8)+len+1);
+    struct sdshdr8 *sh = (void*)(o+1);
 
-//     o->type = OBJ_STRING;
-//     o->encoding = OBJ_ENCODING_EMBSTR;
-//     o->ptr = sh+1;
-//     o->refcount = 1;
-//     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
-//         o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
-//     } else {
-//         o->lru = LRU_CLOCK();
-//     }
+    o->type = OBJ_STRING;
+    o->encoding = OBJ_ENCODING_EMBSTR;
+    o->ptr = sh+1;
+    o->refcount = 1;
+    // if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
+    //     o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
+    // } else {
+    //     o->lru = LRU_CLOCK();
+    // } //debug michael
 
-//     sh->len = len;
-//     sh->alloc = len;
-//     sh->flags = SDS_TYPE_8;
-//     if (ptr == SDS_NOINIT)
-//         sh->buf[len] = '\0';
-//     else if (ptr) {
-//         memcpy(sh->buf,ptr,len);
-//         sh->buf[len] = '\0';
-//     } else {
-//         memset(sh->buf,0,len+1);
-//     }
-//     return o;
-// }
+    sh->len = len;
+    sh->alloc = len;
+    sh->flags = SDS_TYPE_8;
+    if (ptr == SDS_NOINIT)
+        sh->buf[len] = '\0';
+    else if (ptr) {
+        memcpy(sh->buf,ptr,len);
+        sh->buf[len] = '\0';
+    } else {
+        memset(sh->buf,0,len+1);
+    }
+    return o;
+}
 
 // /* Create a string object with EMBSTR encoding if it is smaller than
 //  * OBJ_ENCODING_EMBSTR_SIZE_LIMIT, otherwise the RAW encoding is
@@ -116,13 +116,13 @@ robj *createObject(int type, void *ptr) {
 //  *
 //  * The current limit of 44 is chosen so that the biggest string object
 //  * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. */
-// #define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
-// robj *createStringObject(const char *ptr, size_t len) {
-//     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
-//         return createEmbeddedStringObject(ptr,len);
-//     else
-//         return createRawStringObject(ptr,len);
-// }
+#define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
+robj *createStringObject(const char *ptr, size_t len) {
+    if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
+        return createEmbeddedStringObject(ptr,len);
+    else
+        return createRawStringObject(ptr,len);
+}
 
 // /* Same as CreateRawStringObject, can return NULL if allocation fails */
 // robj *tryCreateRawStringObject(const char *ptr, size_t len) {
@@ -361,38 +361,39 @@ robj *createObject(int type, void *ptr) {
 //     }
 // }
 
-// void freeModuleObject(robj *o) {
-//     moduleValue *mv = o->ptr;
-//     mv->type->free(mv->value);
-//     zfree(mv);
-// }
+void freeModuleObject(robj *o) {
+    moduleValue *mv = o->ptr;
+    mv->type->free(mv->value);
+    zfree(mv);
+}
 
-// void freeStreamObject(robj *o) {
-//     freeStream(o->ptr);
-// }
+void freeStreamObject(robj *o) {
+    freeStream(o->ptr);
+}
 
-// void incrRefCount(robj *o) {
-//     if (o->refcount < OBJ_FIRST_SPECIAL_REFCOUNT) {
-//         o->refcount++;
-//     } else {
-//         if (o->refcount == OBJ_SHARED_REFCOUNT) {
-//             /* Nothing to do: this refcount is immutable. */
-//         } else if (o->refcount == OBJ_STATIC_REFCOUNT) {
-//             serverPanic("You tried to retain an object allocated in the stack");
-//         }
-//     }
-// }
+void incrRefCount(robj *o) {
+    if (o->refcount < OBJ_FIRST_SPECIAL_REFCOUNT) {
+        o->refcount++;
+    } else {
+        if (o->refcount == OBJ_SHARED_REFCOUNT) {
+            /* Nothing to do: this refcount is immutable. */
+        } else if (o->refcount == OBJ_STATIC_REFCOUNT) {
+            // serverPanic("You tried to retain an object allocated in the stack");
+            serverLog(LL_DEBUG,"You tried to retain an object allocated in the stack");
+        }
+    }
+}
 
 void decrRefCount(robj *o) {
     if (o->refcount == 1) {
         switch(o->type) {
-        case OBJ_STRING: freeStringObject(o); break;
-        case OBJ_LIST: freeListObject(o); break;
-        case OBJ_SET: freeSetObject(o); break;
-        case OBJ_ZSET: freeZsetObject(o); break;
-        case OBJ_HASH: freeHashObject(o); break;
-        case OBJ_MODULE: freeModuleObject(o); break;
-        case OBJ_STREAM: freeStreamObject(o); break;
+        // case OBJ_STRING: freeStringObject(o); break;
+        // case OBJ_LIST: freeListObject(o); break;
+        // case OBJ_SET: freeSetObject(o); break;
+        // case OBJ_ZSET: freeZsetObject(o); break;
+        // case OBJ_HASH: freeHashObject(o); break;
+        // case OBJ_MODULE: freeModuleObject(o); break;
+        // case OBJ_STREAM: freeStreamObject(o); break;
         // default: serverPanic("Unknown object type"); break; 
         default: serverLog(LL_DEBUG,"Unknown object type"); break; //debug michael
 
@@ -704,23 +705,24 @@ void decrRefCountVoid(void *o) {
 
 // /* Get a decoded version of an encoded object (returned as a new object).
 //  * If the object is already raw-encoded just increment the ref count. */
-// robj *getDecodedObject(robj *o) {
-//     robj *dec;
+robj *getDecodedObject(robj *o) {
+    robj *dec;
 
-//     if (sdsEncodedObject(o)) {
-//         incrRefCount(o);
-//         return o;
-//     }
-//     if (o->type == OBJ_STRING && o->encoding == OBJ_ENCODING_INT) {
-//         char buf[32];
+    if (sdsEncodedObject(o)) {
+        incrRefCount(o);
+        return o;
+    }
+    if (o->type == OBJ_STRING && o->encoding == OBJ_ENCODING_INT) {
+        char buf[32];
 
-//         ll2string(buf,32,(long)o->ptr);
-//         dec = createStringObject(buf,strlen(buf));
-//         return dec;
-//     } else {
-//         serverPanic("Unknown encoding type");
-//     }
-// }
+        ll2string(buf,32,(long)o->ptr);
+        dec = createStringObject(buf,strlen(buf));
+        return dec;
+    } else {
+        // serverPanic("Unknown encoding type");
+        serverLog(LL_DEBUG,"Unknown encoding type");
+     }
+}
 
 // /* Compare two string objects via strcmp() or strcoll() depending on flags.
 //  * Note that the objects may be integer-encoded. In such a case we

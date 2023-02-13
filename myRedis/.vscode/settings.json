@@ -24,7 +24,9 @@
         "sha256.h": "c",
         "signal.h": "c",
         "script.h": "c",
-        "endianconv.h": "c"
+        "endianconv.h": "c",
+        "stream.h": "c",
+        "rax.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

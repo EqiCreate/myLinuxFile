@@ -80,12 +80,12 @@ uint8_t *dictGetHashFunctionSeed(void) {
 /* The default hashing function uses SipHash implementation
  * in siphash.c. */
 
-// uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k);
+uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k);
 uint64_t siphash_nocase(const uint8_t *in, const size_t inlen, const uint8_t *k);
 
-// uint64_t dictGenHashFunction(const void *key, size_t len) {
-//     return siphash(key,len,dict_hash_function_seed);
-// }
+uint64_t dictGenHashFunction(const void *key, size_t len) {
+    return siphash(key,len,dict_hash_function_seed);
+}
 
 uint64_t dictGenCaseHashFunction(const unsigned char *buf, size_t len) {
     return siphash_nocase(buf,len,dict_hash_function_seed);
@@ -472,39 +472,39 @@ void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
 }
 
 // /* Destroy an entire dictionary */
-// int _dictClear(dict *d, int htidx, void(callback)(dict*)) {
-//     unsigned long i;
+int _dictClear(dict *d, int htidx, void(callback)(dict*)) {
+    unsigned long i;
 
-//     /* Free all the elements */
-//     for (i = 0; i < DICTHT_SIZE(d->ht_size_exp[htidx]) && d->ht_used[htidx] > 0; i++) {
-//         dictEntry *he, *nextHe;
+    /* Free all the elements */
+    for (i = 0; i < DICTHT_SIZE(d->ht_size_exp[htidx]) && d->ht_used[htidx] > 0; i++) {
+        dictEntry *he, *nextHe;
 
-//         if (callback && (i & 65535) == 0) callback(d);
+        if (callback && (i & 65535) == 0) callback(d);
 
-//         if ((he = d->ht_table[htidx][i]) == NULL) continue;
-//         while(he) {
-//             nextHe = he->next;
-//             dictFreeKey(d, he);
-//             dictFreeVal(d, he);
-//             zfree(he);
-//             d->ht_used[htidx]--;
-//             he = nextHe;
-//         }
-//     }
-//     /* Free the table and the allocated cache structure */
-//     zfree(d->ht_table[htidx]);
-//     /* Re-initialize the table */
-//     _dictReset(d, htidx);
-//     return DICT_OK; /* never fails */
-// }
+        if ((he = d->ht_table[htidx][i]) == NULL) continue;
+        while(he) {
+            nextHe = he->next;
+            dictFreeKey(d, he);
+            dictFreeVal(d, he);
+            zfree(he);
+            d->ht_used[htidx]--;
+            he = nextHe;
+        }
+    }
+    /* Free the table and the allocated cache structure */
+    zfree(d->ht_table[htidx]);
+    /* Re-initialize the table */
+    _dictReset(d, htidx);
+    return DICT_OK; /* never fails */
+}
 
 // /* Clear & Release the hash table */
-// void dictRelease(dict *d)
-// {
-//     _dictClear(d,0,NULL);
-//     _dictClear(d,1,NULL);
-//     zfree(d);
-// }
+void dictRelease(dict *d)
+{
+    _dictClear(d,0,NULL);
+    _dictClear(d,1,NULL);
+    zfree(d);
+}
 
 dictEntry *dictFind(dict *d, const void *key)
 {
