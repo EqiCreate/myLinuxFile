@@ -1788,9 +1788,9 @@ void ACLInit(void) {
 // }
 
 // /* High level API for checking if a client can execute the queued up command */
-// int ACLCheckAllPerm(client *c, int *idxptr) {
-//     return ACLCheckAllUserCommandPerm(c->user, c->cmd, c->argv, c->argc, idxptr);
-// }
+int ACLCheckAllPerm(client *c, int *idxptr) {
+    // return ACLCheckAllUserCommandPerm(c->user, c->cmd, c->argv, c->argc, idxptr);
+}
 
 // /* Check if the user's existing pub/sub clients violate the ACL pub/sub
 //  * permissions specified via the upcoming argument, and kill them if so. */

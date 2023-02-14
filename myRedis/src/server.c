@@ -36,6 +36,7 @@
 #endif
 
 // #include "functions.h"
+extern int ProcessingEventsWhileBlocked;
 
 struct sharedObjectsStruct shared;
 struct redisCommand *lookupSubcommand(struct redisCommand *container, sds sub_name) {
@@ -1057,7 +1058,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     // handleBlockedClientsTimeout();
 
     // /* We should handle pending reads clients ASAP after event loop. */
-    // handleClientsWithPendingReadsUsingThreads();
+    handleClientsWithPendingReadsUsingThreads();
 
     // /* Handle pending data(typical TLS). (must be done before flushAppendOnlyFile) */
     // connTypeProcessPendingData();
@@ -1384,10 +1385,97 @@ void initServer(void) {
     applyWatchdogPeriod();
 }
 
+
+/* All normal clients are placed in one of the "mem usage buckets" according
+ * to how much memory they currently use. We use this function to find the
+ * appropriate bucket based on a given memory usage value. The algorithm simply
+ * does a log2(mem) to ge the bucket. This means, for examples, that if a
+ * client's memory usage doubles it's moved up to the next bucket, if it's
+ * halved we move it down a bucket.
+ * For more details see CLIENT_MEM_USAGE_BUCKETS documentation in server.h. */
+static inline clientMemUsageBucket *getMemUsageBucket(size_t mem) {
+    int size_in_bits = 8*(int)sizeof(mem);
+    int clz = mem > 0 ? __builtin_clzl(mem) : size_in_bits;
+    int bucket_idx = size_in_bits - clz;
+    if (bucket_idx > CLIENT_MEM_USAGE_BUCKET_MAX_LOG)
+        bucket_idx = CLIENT_MEM_USAGE_BUCKET_MAX_LOG;
+    else if (bucket_idx < CLIENT_MEM_USAGE_BUCKET_MIN_LOG)
+        bucket_idx = CLIENT_MEM_USAGE_BUCKET_MIN_LOG;
+    bucket_idx -= CLIENT_MEM_USAGE_BUCKET_MIN_LOG;
+    return &server.client_mem_usage_buckets[bucket_idx];
+}
+
+
+/* This is called both on explicit clients when something changed their buffers,
+ * so we can track clients' memory and enforce clients' maxmemory in real time,
+ * and also from the clientsCron. We call it from the cron so we have updated
+ * stats for non CLIENT_TYPE_NORMAL/PUBSUB clients and in case a configuration
+ * change requires us to evict a non-active client.
+ *
+ * This also adds the client to the correct memory usage bucket. Each bucket contains
+ * all clients with roughly the same amount of memory. This way we group
+ * together clients consuming about the same amount of memory and can quickly
+ * free them in case we reach maxmemory-clients (client eviction).
+ */
+int updateClientMemUsage(client *c) {
+    serverAssert(io_threads_op == IO_THREADS_OP_IDLE);
+    size_t mem = getClientMemoryUsage(c, NULL);
+    int type = getClientType(c);
+
+    /* Remove the old value of the memory used by the client from the old
+     * category, and add it back. */
+    if (type != c->last_memory_type) {
+        server.stat_clients_type_memory[c->last_memory_type] -= c->last_memory_usage;
+        server.stat_clients_type_memory[type] += mem;
+        c->last_memory_type = type;
+    } else {
+        server.stat_clients_type_memory[type] += mem - c->last_memory_usage;
+    }
+
+    int allow_eviction =
+            (type == CLIENT_TYPE_NORMAL || type == CLIENT_TYPE_PUBSUB) &&
+            !(c->flags & CLIENT_NO_EVICT);
+
+    /* Update the client in the mem usage buckets */
+    if (c->mem_usage_bucket) {
+        c->mem_usage_bucket->mem_usage_sum -= c->last_memory_usage;
+        /* If this client can't be evicted then remove it from the mem usage
+         * buckets */
+        if (!allow_eviction) {
+            listDelNode(c->mem_usage_bucket->clients, c->mem_usage_bucket_node);
+            c->mem_usage_bucket = NULL;
+            c->mem_usage_bucket_node = NULL;
+        }
+    }
+    if (allow_eviction) {
+        clientMemUsageBucket *bucket = getMemUsageBucket(mem);
+        bucket->mem_usage_sum += mem;
+        if (bucket != c->mem_usage_bucket) {
+            if (c->mem_usage_bucket)
+                listDelNode(c->mem_usage_bucket->clients,
+                            c->mem_usage_bucket_node);
+            c->mem_usage_bucket = bucket;
+            listAddNodeTail(bucket->clients, c);
+            c->mem_usage_bucket_node = listLast(bucket->clients);
+        }
+    }
+
+    /* Remember what we added, to remove it next time. */
+    c->last_memory_usage = mem;
+
+    return 0;
+}
+
 #pragma endregion
 
 
 # pragma region
+
+/* Commands arriving from the master client or AOF client, should never be rejected. */
+int mustObeyClient(client *c) {
+    return c->id == CLIENT_ID_AOF || c->flags & CLIENT_MASTER;
+}
+
 void incrementErrorCount(const char *fullerr, size_t namelen) {
     // struct redisError *error = raxFind(server.errors,(unsigned char*)fullerr,namelen);
     // if (error == raxNotFound) {
@@ -1413,6 +1501,442 @@ mstime_t mstime(void) {
     return ustime()/1000;
 }
 
+/* If we're executing a script, try to extract a set of command flags from
+ * it, in case it declared them. Note this is just an attempt, we don't yet
+ * know the script command is well formed.*/
+// uint64_t getCommandFlags(client *c) {
+//     uint64_t cmd_flags = c->cmd->flags;
+
+//     if (c->cmd->proc == fcallCommand || c->cmd->proc == fcallroCommand) {
+//         cmd_flags = fcallGetCommandFlags(c, cmd_flags);
+//     } else if (c->cmd->proc == evalCommand || c->cmd->proc == evalRoCommand ||
+//                c->cmd->proc == evalShaCommand || c->cmd->proc == evalShaRoCommand)
+//     {
+//         cmd_flags = evalGetCommandFlags(c, cmd_flags);
+//     }
+
+//     return cmd_flags;
+// }
+
+struct redisCommand *lookupCommand(robj **argv, int argc) {
+    return lookupCommandLogic(server.commands,argv,argc,0);
+}
+void rejectCommandSds(client *c, sds s) {
+    // flagTransaction(c); 
+    // if (c->cmd) c->cmd->rejected_calls++;
+    // if (c->cmd && c->cmd->proc == execCommand) {
+    //     execCommandAbort(c, s);
+    //     sdsfree(s);
+    // } else {
+    //     /* The following frees 's'. */
+    //     addReplyErrorSds(c, s);
+    // }
+    //debug michael
+}
+
+
+/* Returns true when we're inside a long command that yielded to the event loop. */
+int isInsideYieldingLongCommand() {
+    // return scriptIsTimedout() || server.busy_module_yield_flags; //;debug michael
+    return server.busy_module_yield_flags;
+}
+
+void rejectCommandFormat(client *c, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap,fmt);
+    sds s = sdscatvprintf(sdsempty(),fmt,ap);
+    va_end(ap);
+    /* Make sure there are no newlines in the string, otherwise invalid protocol
+     * is emitted (The args come from the user, they may contain any character). */
+    sdsmapchars(s, "\r\n", "  ",  2);
+    rejectCommandSds(c, s);
+}
+
+/* If this function gets called we already read a whole
+ * command, arguments are in the client argv/argc fields.
+ * processCommand() execute the command or prepare the
+ * server for a bulk read from the client.
+ *
+ * If C_OK is returned the client is still alive and valid and
+ * other operations can be performed by the caller. Otherwise
+ * if C_ERR is returned the client was destroyed (i.e. after QUIT). */
+int processCommand(client *c) {
+    // if (!scriptIsTimedout()) {
+    //     /* Both EXEC and scripts call call() directly so there should be
+    //      * no way in_exec or scriptIsRunning() is 1.
+    //      * That is unless lua_timedout, in which case client may run
+    //      * some commands. */
+    //     serverAssert(!server.in_exec);
+    //     serverAssert(!scriptIsRunning());
+    // }
+
+    // moduleCallCommandFilters(c); //debug michael
+
+    /* Handle possible security attacks. */
+    if (!strcasecmp(c->argv[0]->ptr,"host:") || !strcasecmp(c->argv[0]->ptr,"post")) {
+        securityWarningCommand(c);
+        return C_ERR;
+    }
+
+    /* If we're inside a module blocked context yielding that wants to avoid
+     * processing clients, postpone the command. */
+    if (server.busy_module_yield_flags != BUSY_MODULE_YIELD_NONE &&
+        !(server.busy_module_yield_flags & BUSY_MODULE_YIELD_CLIENTS))
+    {
+        c->bpop.timeout = 0;
+        // blockClient(c,BLOCKED_POSTPONE); //debug michael
+        return C_OK;
+    }
+
+    /* Now lookup the command and check ASAP about trivial error conditions
+     * such as wrong arity, bad command name and so forth. */
+    c->cmd = c->lastcmd = c->realcmd = lookupCommand(c->argv,c->argc);
+    sds err;
+    // if (!commandCheckExistence(c, &err)) {
+    //     rejectCommandSds(c, err);
+    //     return C_OK;
+    // }
+    // if (!commandCheckArity(c, &err)) {
+    //     rejectCommandSds(c, err);
+    //     return C_OK;
+    // } //debug michael
+
+    /* Check if the command is marked as protected and the relevant configuration allows it */
+    // if (c->cmd->flags & CMD_PROTECTED) {
+    //     if ((c->cmd->proc == debugCommand && !allowProtectedAction(server.enable_debug_cmd, c)) ||
+    //         (c->cmd->proc == moduleCommand && !allowProtectedAction(server.enable_module_cmd, c)))
+    //     {
+    //         rejectCommandFormat(c,"%s command not allowed. If the %s option is set to \"local\", "
+    //                               "you can run it from a local connection, otherwise you need to set this option "
+    //                               "in the configuration file, and then restart the server.",
+    //                               c->cmd->proc == debugCommand ? "DEBUG" : "MODULE",
+    //                               c->cmd->proc == debugCommand ? "enable-debug-command" : "enable-module-command");
+    //         return C_OK;
+
+    //     }
+    // } //debug michael
+
+    // uint64_t cmd_flags = getCommandFlags(c); //debug michael
+
+    // int is_read_command = (cmd_flags & CMD_READONLY) ||
+    //                        (c->cmd->proc == execCommand && (c->mstate.cmd_flags & CMD_READONLY));
+    // int is_write_command = (cmd_flags & CMD_WRITE) ||
+                        //    (c->cmd->proc == execCommand && (c->mstate.cmd_flags & CMD_WRITE));
+    // int is_denyoom_command = (cmd_flags & CMD_DENYOOM) ||
+    //                          (c->cmd->proc == execCommand && (c->mstate.cmd_flags & CMD_DENYOOM));
+    // int is_denystale_command = !(cmd_flags & CMD_STALE) ||
+    //                            (c->cmd->proc == execCommand && (c->mstate.cmd_inv_flags & CMD_STALE));
+    // int is_denyloading_command = !(cmd_flags & CMD_LOADING) ||
+    //                              (c->cmd->proc == execCommand && (c->mstate.cmd_inv_flags & CMD_LOADING));
+    // int is_may_replicate_command = (cmd_flags & (CMD_WRITE | CMD_MAY_REPLICATE)) ||
+    //                                (c->cmd->proc == execCommand && (c->mstate.cmd_flags & (CMD_WRITE | CMD_MAY_REPLICATE)));
+    // int is_deny_async_loading_command = (cmd_flags & CMD_NO_ASYNC_LOADING) ||
+    //                                     (c->cmd->proc == execCommand && (c->mstate.cmd_flags & CMD_NO_ASYNC_LOADING));
+    int obey_client = mustObeyClient(c);
+
+    // if (authRequired(c)) {
+    //     /* AUTH and HELLO and no auth commands are valid even in
+    //      * non-authenticated state. */
+    //     if (!(c->cmd->flags & CMD_NO_AUTH)) {
+    //         rejectCommand(c,shared.noautherr);
+    //         return C_OK;
+    //     }
+    // } //debug michael
+
+    // if (c->flags & CLIENT_MULTI && c->cmd->flags & CMD_NO_MULTI) {
+    //     rejectCommandFormat(c,"Command not allowed inside a transaction");
+    //     return C_OK;
+    // } //debug michael
+
+    /* Check if the user can run this command according to the current
+     * ACLs. */
+    // int acl_errpos;
+    // int acl_retval = ACLCheckAllPerm(c,&acl_errpos);
+    // if (acl_retval != ACL_OK) {
+    //     addACLLogEntry(c,acl_retval,(c->flags & CLIENT_MULTI) ? ACL_LOG_CTX_MULTI : ACL_LOG_CTX_TOPLEVEL,acl_errpos,NULL,NULL);
+    //     sds msg = getAclErrorMessage(acl_retval, c->user, c->cmd, c->argv[acl_errpos]->ptr, 0);
+    //     rejectCommandFormat(c, "-NOPERM %s", msg);
+    //     sdsfree(msg);
+    //     return C_OK;
+    // } //debug michael
+
+    /* If cluster is enabled perform the cluster redirection here.
+     * However we don't perform the redirection if:
+     * 1) The sender of this command is our master.
+     * 2) The command has no key arguments. */
+    // if (server.cluster_enabled &&
+    //     !mustObeyClient(c) &&
+    //     !(!(c->cmd->flags&CMD_MOVABLE_KEYS) && c->cmd->key_specs_num == 0 &&
+    //       c->cmd->proc != execCommand))
+    // {
+    //     int error_code;
+    //     clusterNode *n = getNodeByQuery(c,c->cmd,c->argv,c->argc,
+    //                                     &c->slot,&error_code);
+    //     if (n == NULL || n != server.cluster->myself) {
+    //         if (c->cmd->proc == execCommand) {
+    //             discardTransaction(c);
+    //         } else {
+    //             flagTransaction(c);
+    //         }
+    //         clusterRedirectClient(c,n,c->slot,error_code);
+    //         c->cmd->rejected_calls++;
+    //         return C_OK;
+    //     }
+    // }  //debug michael
+
+    /* Disconnect some clients if total clients memory is too high. We do this
+     * before key eviction, after the last command was executed and consumed
+     * some client output buffer memory. */
+    evictClients();
+    if (server.current_client == NULL) {
+        /* If we evicted ourself then abort processing the command */
+        return C_ERR;
+    }
+
+    /* Handle the maxmemory directive.
+     *
+     * Note that we do not want to reclaim memory if we are here re-entering
+     * the event loop since there is a busy Lua script running in timeout
+     * condition, to avoid mixing the propagation of scripts with the
+     * propagation of DELs due to eviction. */
+    // if (server.maxmemory && !isInsideYieldingLongCommand()) {
+    //     int out_of_memory = (performEvictions() == EVICT_FAIL);
+
+    //     /* performEvictions may evict keys, so we need flush pending tracking
+    //      * invalidation keys. If we don't do this, we may get an invalidation
+    //      * message after we perform operation on the key, where in fact this
+    //      * message belongs to the old value of the key before it gets evicted.*/
+    //     trackingHandlePendingKeyInvalidations();
+
+    //     /* performEvictions may flush slave output buffers. This may result
+    //      * in a slave, that may be the active client, to be freed. */
+    //     if (server.current_client == NULL) return C_ERR;
+
+    //     int reject_cmd_on_oom = is_denyoom_command;
+    //     /* If client is in MULTI/EXEC context, queuing may consume an unlimited
+    //      * amount of memory, so we want to stop that.
+    //      * However, we never want to reject DISCARD, or even EXEC (unless it
+    //      * contains denied commands, in which case is_denyoom_command is already
+    //      * set. */
+    //     if (c->flags & CLIENT_MULTI &&
+    //         c->cmd->proc != execCommand &&
+    //         c->cmd->proc != discardCommand &&
+    //         c->cmd->proc != quitCommand &&
+    //         c->cmd->proc != resetCommand) {
+    //         reject_cmd_on_oom = 1;
+    //     }
+
+    //     if (out_of_memory && reject_cmd_on_oom) {
+    //         rejectCommand(c, shared.oomerr);
+    //         return C_OK;
+    //     }
+
+    //     /* Save out_of_memory result at command start, otherwise if we check OOM
+    //      * in the first write within script, memory used by lua stack and
+    //      * arguments might interfere. We need to save it for EXEC and module
+    //      * calls too, since these can call EVAL, but avoid saving it during an
+    //      * interrupted / yielding busy script / module. */
+    //     server.pre_command_oom_state = out_of_memory;
+    // }
+
+    // /* Make sure to use a reasonable amount of memory for client side
+    //  * caching metadata. */
+    // if (server.tracking_clients) trackingLimitUsedSlots(); //debug michael
+
+    /* Don't accept write commands if there are problems persisting on disk
+     * unless coming from our master, in which case check the replica ignore
+     * disk write error config to either log or crash. */
+    // int deny_write_type = writeCommandsDeniedByDiskError();
+    // if (deny_write_type != DISK_ERROR_TYPE_NONE &&
+    //     (is_write_command || c->cmd->proc == pingCommand))
+    // {
+    //     if (obey_client) {
+    //         if (!server.repl_ignore_disk_write_error && c->cmd->proc != pingCommand) {
+    //             serverPanic("Replica was unable to write command to disk.");
+    //         } else {
+    //             static mstime_t last_log_time_ms = 0;
+    //             const mstime_t log_interval_ms = 10000;
+    //             if (server.mstime > last_log_time_ms + log_interval_ms) {
+    //                 last_log_time_ms = server.mstime;
+    //                 serverLog(LL_WARNING, "Replica is applying a command even though "
+    //                                       "it is unable to write to disk.");
+    //             }
+    //         }
+    //     } else {
+    //         sds err = writeCommandsGetDiskErrorMessage(deny_write_type);
+    //         /* remove the newline since rejectCommandSds adds it. */
+    //         sdssubstr(err, 0, sdslen(err)-2);
+    //         rejectCommandSds(c, err);
+    //         return C_OK;
+    //     }
+    // } //debug michael
+
+    // /* Don't accept write commands if there are not enough good slaves and
+    //  * user configured the min-slaves-to-write option. */
+    // if (is_write_command && !checkGoodReplicasStatus()) {
+    //     rejectCommand(c, shared.noreplicaserr);
+    //     return C_OK;
+    // }
+
+    // /* Don't accept write commands if this is a read only slave. But
+    //  * accept write commands if this is our master. */
+    // if (server.masterhost && server.repl_slave_ro &&
+    //     !obey_client &&
+    //     is_write_command)
+    // {
+    //     rejectCommand(c, shared.roslaveerr);
+    //     return C_OK;
+    // }
+
+    /* Only allow a subset of commands in the context of Pub/Sub if the
+     * connection is in RESP2 mode. With RESP3 there are no limits. */
+    // if ((c->flags & CLIENT_PUBSUB && c->resp == 2) &&
+    //     c->cmd->proc != pingCommand &&
+    //     c->cmd->proc != subscribeCommand &&
+    //     c->cmd->proc != ssubscribeCommand &&
+    //     c->cmd->proc != unsubscribeCommand &&
+    //     c->cmd->proc != sunsubscribeCommand &&
+    //     c->cmd->proc != psubscribeCommand &&
+    //     c->cmd->proc != punsubscribeCommand &&
+    //     c->cmd->proc != quitCommand &&
+    //     c->cmd->proc != resetCommand) 
+       if ((c->flags & CLIENT_PUBSUB && c->resp == 2) &&
+        c->cmd->proc != pingCommand //&&
+        // c->cmd->proc != subscribeCommand &&
+        // c->cmd->proc != ssubscribeCommand &&
+        // c->cmd->proc != unsubscribeCommand &&
+        // c->cmd->proc != sunsubscribeCommand &&
+        // c->cmd->proc != psubscribeCommand &&
+        // c->cmd->proc != punsubscribeCommand &&
+        // c->cmd->proc != quitCommand &&
+        // c->cmd->proc != resetCommand
+        ) 
+        {
+        rejectCommandFormat(c,
+            "Can't execute '%s': only (P|S)SUBSCRIBE / "
+            "(P|S)UNSUBSCRIBE / PING / QUIT / RESET are allowed in this context",
+            c->cmd->fullname);
+        return C_OK;
+    }
+
+    // /* Only allow commands with flag "t", such as INFO, REPLICAOF and so on,
+    //  * when replica-serve-stale-data is no and we are a replica with a broken
+    //  * link with master. */
+    // if (server.masterhost && server.repl_state != REPL_STATE_CONNECTED &&
+    //     server.repl_serve_stale_data == 0 &&
+    //     is_denystale_command)
+    // {
+    //     rejectCommand(c, shared.masterdownerr);
+    //     return C_OK;
+    // }
+
+    // /* Loading DB? Return an error if the command has not the
+    //  * CMD_LOADING flag. */
+    // if (server.loading && !server.async_loading && is_denyloading_command) {
+    //     rejectCommand(c, shared.loadingerr);
+    //     return C_OK;
+    // }
+
+    // /* During async-loading, block certain commands. */
+    // if (server.async_loading && is_deny_async_loading_command) {
+    //     rejectCommand(c,shared.loadingerr);
+    //     return C_OK;
+    // }
+
+    // /* when a busy job is being done (script / module)
+    //  * Only allow a limited number of commands.
+    //  * Note that we need to allow the transactions commands, otherwise clients
+    //  * sending a transaction with pipelining without error checking, may have
+    //  * the MULTI plus a few initial commands refused, then the timeout
+    //  * condition resolves, and the bottom-half of the transaction gets
+    //  * executed, see Github PR #7022. */
+    // if (isInsideYieldingLongCommand() && !(c->cmd->flags & CMD_ALLOW_BUSY)) {
+    //     if (server.busy_module_yield_flags && server.busy_module_yield_reply) {
+    //         rejectCommandFormat(c, "-BUSY %s", server.busy_module_yield_reply);
+    //     } else if (server.busy_module_yield_flags) {
+    //         rejectCommand(c, shared.slowmoduleerr);
+    //     } else if (scriptIsEval()) {
+    //         rejectCommand(c, shared.slowevalerr);
+    //     } else {
+    //         rejectCommand(c, shared.slowscripterr);
+    //     }
+    //     return C_OK;
+    // }
+
+    // /* Prevent a replica from sending commands that access the keyspace.
+    //  * The main objective here is to prevent abuse of client pause check
+    //  * from which replicas are exempt. */
+    // if ((c->flags & CLIENT_SLAVE) && (is_may_replicate_command || is_write_command || is_read_command)) {
+    //     rejectCommandFormat(c, "Replica can't interact with the keyspace");
+    //     return C_OK;
+    // }
+
+    // /* If the server is paused, block the client until
+    //  * the pause has ended. Replicas are never paused. */
+    // if (!(c->flags & CLIENT_SLAVE) && 
+    //     ((isPausedActions(PAUSE_ACTION_CLIENT_ALL)) ||
+    //     ((isPausedActions(PAUSE_ACTION_CLIENT_WRITE)) && is_may_replicate_command)))
+    // {
+    //     c->bpop.timeout = 0;
+    //     // blockClient(c,BLOCKED_POSTPONE); //debug michael
+    //     return C_OK;       
+    // }
+
+    // /* Exec the command */
+    // if (c->flags & CLIENT_MULTI &&
+    //     c->cmd->proc != execCommand &&
+    //     c->cmd->proc != discardCommand &&
+    //     c->cmd->proc != multiCommand &&
+    //     c->cmd->proc != watchCommand &&
+    //     c->cmd->proc != quitCommand &&
+    //     c->cmd->proc != resetCommand)
+    // {
+    //     queueMultiCommand(c, cmd_flags);
+    //     addReply(c,shared.queued);
+    // } else {
+    //     call(c,CMD_CALL_FULL);
+    //     c->woff = server.master_repl_offset;
+    //     if (listLength(server.ready_keys))
+    //         handleClientsBlockedOnKeys();
+    // }
+
+    return C_OK;
+}
+
+/* Sometimes Redis cannot accept write commands because there is a persistence
+ * error with the RDB or AOF file, and Redis is configured in order to stop
+ * accepting writes in such situation. This function returns if such a
+ * condition is active, and the type of the condition.
+ *
+ * Function return values:
+ *
+ * DISK_ERROR_TYPE_NONE:    No problems, we can accept writes.
+ * DISK_ERROR_TYPE_AOF:     Don't accept writes: AOF errors.
+ * DISK_ERROR_TYPE_RDB:     Don't accept writes: RDB errors.
+ */
+int writeCommandsDeniedByDiskError(void) {
+    // if (server.stop_writes_on_bgsave_err &&
+    //     server.saveparamslen > 0 &&
+    //     server.lastbgsave_status == C_ERR)
+    // {
+    //     return DISK_ERROR_TYPE_RDB;
+    // } else if (server.aof_state != AOF_OFF) {
+    //     if (server.aof_last_write_status == C_ERR) {
+    //         return DISK_ERROR_TYPE_AOF;
+    //     }
+    //     /* AOF fsync error. */
+    //     int aof_bio_fsync_status;
+    //     atomicGet(server.aof_bio_fsync_status,aof_bio_fsync_status);
+    //     if (aof_bio_fsync_status == C_ERR) {
+    //         atomicGet(server.aof_bio_fsync_errno,server.aof_last_write_errno);
+    //         return DISK_ERROR_TYPE_AOF;
+    //     }
+    // }//debug michael
+
+    return DISK_ERROR_TYPE_NONE;
+}
+
+
 /* The PING command. It works in a different way if the client is in
  * in Pub/Sub mode. */
 void pingCommand(client *c) {
@@ -1436,6 +1960,8 @@ void pingCommand(client *c) {
             addReplyBulk(c,c->argv[1]);
     }
 }
+
+
 # pragma endregion
 
 int main(int argc, char **argv)

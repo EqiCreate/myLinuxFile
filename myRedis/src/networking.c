@@ -37,7 +37,7 @@
 #include <math.h>
 #include <ctype.h>
 
-// static void setProtocolError(const char *errstr, client *c);
+static void setProtocolError(const char *errstr, client *c);
 // static void pauseClientsByClient(mstime_t end, int isPauseClientAll);
 int postponeClientRead(client *c);
 int ProcessingEventsWhileBlocked = 0; /* See processEventsWhileBlocked(). */
@@ -110,14 +110,14 @@ void linkClient(client *c) {
 //                        !(c->user->flags & USER_FLAG_DISABLED);
 // }
 
-// int authRequired(client *c) {
-//     /* Check if the user is authenticated. This check is skipped in case
-//      * the default user is flagged as "nopass" and is active. */
-//     int auth_required = (!(DefaultUser->flags & USER_FLAG_NOPASS) ||
-//                           (DefaultUser->flags & USER_FLAG_DISABLED)) &&
-//                         !c->authenticated;
-//     return auth_required;
-// }
+int authRequired(client *c) {
+    /* Check if the user is authenticated. This check is skipped in case
+     * the default user is flagged as "nopass" and is active. */
+    int auth_required = (!(DefaultUser->flags & USER_FLAG_NOPASS) ||
+                          (DefaultUser->flags & USER_FLAG_DISABLED)) &&
+                        !c->authenticated;
+    return auth_required;
+}
 
 client *createClient(connection *conn) {
     client *c = zmalloc(sizeof(client));
@@ -583,10 +583,10 @@ void afterErrorReply(client *c, const char *s, size_t len, int flags) {
 // }
 
 // /* See addReplyErrorLength for expectations from the input string. */
-// void addReplyError(client *c, const char *err) {
-//     addReplyErrorLength(c,err,strlen(err));
-//     afterErrorReply(c,err,strlen(err),0);
-// }
+void addReplyError(client *c, const char *err) {
+    addReplyErrorLength(c,err,strlen(err));
+    afterErrorReply(c,err,strlen(err),0);
+}
 
 // /* Add error reply to the given client.
 //  * Supported flags:
@@ -2017,39 +2017,39 @@ int beforeNextClient(client *c) {
 // }
 
 // /* resetClient prepare the client to process the next command */
-// void resetClient(client *c) {
-//     redisCommandProc *prevcmd = c->cmd ? c->cmd->proc : NULL;
+void resetClient(client *c) {
+    redisCommandProc *prevcmd = c->cmd ? c->cmd->proc : NULL;
 
-//     freeClientArgv(c);
-//     c->reqtype = 0;
-//     c->multibulklen = 0;
-//     c->bulklen = -1;
-//     c->slot = -1;
+    freeClientArgv(c);
+    c->reqtype = 0;
+    c->multibulklen = 0;
+    c->bulklen = -1;
+    c->slot = -1;
 
-//     if (c->deferred_reply_errors)
-//         listRelease(c->deferred_reply_errors);
-//     c->deferred_reply_errors = NULL;
+    if (c->deferred_reply_errors)
+        listRelease(c->deferred_reply_errors);
+    c->deferred_reply_errors = NULL;
 
-//     /* We clear the ASKING flag as well if we are not inside a MULTI, and
-//      * if what we just executed is not the ASKING command itself. */
-//     if (!(c->flags & CLIENT_MULTI) && prevcmd != askingCommand)
-//         c->flags &= ~CLIENT_ASKING;
+    /* We clear the ASKING flag as well if we are not inside a MULTI, and
+     * if what we just executed is not the ASKING command itself. */
+    // if (!(c->flags & CLIENT_MULTI) && prevcmd != askingCommand)
+    //     c->flags &= ~CLIENT_ASKING; //debug michael
 
-//     /* We do the same for the CACHING command as well. It also affects
-//      * the next command or transaction executed, in a way very similar
-//      * to ASKING. */
-//     if (!(c->flags & CLIENT_MULTI) && prevcmd != clientCommand)
-//         c->flags &= ~CLIENT_TRACKING_CACHING;
+    /* We do the same for the CACHING command as well. It also affects
+     * the next command or transaction executed, in a way very similar
+     * to ASKING. */
+    // if (!(c->flags & CLIENT_MULTI) && prevcmd != clientCommand)
+    //     c->flags &= ~CLIENT_TRACKING_CACHING; //debug michael
 
-//     /* Remove the CLIENT_REPLY_SKIP flag if any so that the reply
-//      * to the next command will be sent, but set the flag if the command
-//      * we just processed was "CLIENT REPLY SKIP". */
-//     c->flags &= ~CLIENT_REPLY_SKIP;
-//     if (c->flags & CLIENT_REPLY_SKIP_NEXT) {
-//         c->flags |= CLIENT_REPLY_SKIP;
-//         c->flags &= ~CLIENT_REPLY_SKIP_NEXT;
-//     }
-// }
+    /* Remove the CLIENT_REPLY_SKIP flag if any so that the reply
+     * to the next command will be sent, but set the flag if the command
+     * we just processed was "CLIENT REPLY SKIP". */
+    c->flags &= ~CLIENT_REPLY_SKIP;
+    if (c->flags & CLIENT_REPLY_SKIP_NEXT) {
+        c->flags |= CLIENT_REPLY_SKIP;
+        c->flags &= ~CLIENT_REPLY_SKIP_NEXT;
+    }
+}
 
 // /* This function is used when we want to re-enter the event loop but there
 //  * is the risk that the client we are dealing with will be freed in some
@@ -2090,112 +2090,112 @@ int beforeNextClient(client *c) {
 //  * have a well formed command. The function also returns C_ERR when there is
 //  * a protocol error: in such a case the client structure is setup to reply
 //  * with the error and close the connection. */
-// int processInlineBuffer(client *c) {
-//     char *newline;
-//     int argc, j, linefeed_chars = 1;
-//     sds *argv, aux;
-//     size_t querylen;
+int processInlineBuffer(client *c) {
+    char *newline;
+    int argc, j, linefeed_chars = 1;
+    sds *argv, aux;
+    size_t querylen;
 
-//     /* Search for end of line */
-//     newline = strchr(c->querybuf+c->qb_pos,'\n');
+    /* Search for end of line */
+    newline = strchr(c->querybuf+c->qb_pos,'\n');
 
-//     /* Nothing to do without a \r\n */
-//     if (newline == NULL) {
-//         if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
-//             addReplyError(c,"Protocol error: too big inline request");
-//             setProtocolError("too big inline request",c);
-//         }
-//         return C_ERR;
-//     }
+    /* Nothing to do without a \r\n */
+    if (newline == NULL) {
+        if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
+            addReplyError(c,"Protocol error: too big inline request");
+            setProtocolError("too big inline request",c);
+        }
+        return C_ERR;
+    }
 
-//     /* Handle the \r\n case. */
-//     if (newline != c->querybuf+c->qb_pos && *(newline-1) == '\r')
-//         newline--, linefeed_chars++;
+    /* Handle the \r\n case. */
+    if (newline != c->querybuf+c->qb_pos && *(newline-1) == '\r')
+        newline--, linefeed_chars++;
 
-//     /* Split the input buffer up to the \r\n */
-//     querylen = newline-(c->querybuf+c->qb_pos);
-//     aux = sdsnewlen(c->querybuf+c->qb_pos,querylen);
-//     argv = sdssplitargs(aux,&argc);
-//     sdsfree(aux);
-//     if (argv == NULL) {
-//         addReplyError(c,"Protocol error: unbalanced quotes in request");
-//         setProtocolError("unbalanced quotes in inline request",c);
-//         return C_ERR;
-//     }
+    /* Split the input buffer up to the \r\n */
+    querylen = newline-(c->querybuf+c->qb_pos);
+    aux = sdsnewlen(c->querybuf+c->qb_pos,querylen);
+    argv = sdssplitargs(aux,&argc);
+    sdsfree(aux);
+    if (argv == NULL) {
+        addReplyError(c,"Protocol error: unbalanced quotes in request");
+        setProtocolError("unbalanced quotes in inline request",c);
+        return C_ERR;
+    }
 
-//     /* Newline from slaves can be used to refresh the last ACK time.
-//      * This is useful for a slave to ping back while loading a big
-//      * RDB file. */
-//     if (querylen == 0 && getClientType(c) == CLIENT_TYPE_SLAVE)
-//         c->repl_ack_time = server.unixtime;
+    /* Newline from slaves can be used to refresh the last ACK time.
+     * This is useful for a slave to ping back while loading a big
+     * RDB file. */
+    if (querylen == 0 && getClientType(c) == CLIENT_TYPE_SLAVE)
+        c->repl_ack_time = server.unixtime;
 
-//     /* Masters should never send us inline protocol to run actual
-//      * commands. If this happens, it is likely due to a bug in Redis where
-//      * we got some desynchronization in the protocol, for example
-//      * because of a PSYNC gone bad.
-//      *
-//      * However there is an exception: masters may send us just a newline
-//      * to keep the connection active. */
-//     if (querylen != 0 && c->flags & CLIENT_MASTER) {
-//         sdsfreesplitres(argv,argc);
-//         serverLog(LL_WARNING,"WARNING: Receiving inline protocol from master, master stream corruption? Closing the master connection and discarding the cached master.");
-//         setProtocolError("Master using the inline protocol. Desync?",c);
-//         return C_ERR;
-//     }
+    /* Masters should never send us inline protocol to run actual
+     * commands. If this happens, it is likely due to a bug in Redis where
+     * we got some desynchronization in the protocol, for example
+     * because of a PSYNC gone bad.
+     *
+     * However there is an exception: masters may send us just a newline
+     * to keep the connection active. */
+    if (querylen != 0 && c->flags & CLIENT_MASTER) {
+        sdsfreesplitres(argv,argc);
+        serverLog(LL_WARNING,"WARNING: Receiving inline protocol from master, master stream corruption? Closing the master connection and discarding the cached master.");
+        setProtocolError("Master using the inline protocol. Desync?",c);
+        return C_ERR;
+    }
 
-//     /* Move querybuffer position to the next query in the buffer. */
-//     c->qb_pos += querylen+linefeed_chars;
+    /* Move querybuffer position to the next query in the buffer. */
+    c->qb_pos += querylen+linefeed_chars;
 
-//     /* Setup argv array on client structure */
-//     if (argc) {
-//         if (c->argv) zfree(c->argv);
-//         c->argv_len = argc;
-//         c->argv = zmalloc(sizeof(robj*)*c->argv_len);
-//         c->argv_len_sum = 0;
-//     }
+    /* Setup argv array on client structure */
+    if (argc) {
+        if (c->argv) zfree(c->argv);
+        c->argv_len = argc;
+        c->argv = zmalloc(sizeof(robj*)*c->argv_len);
+        c->argv_len_sum = 0;
+    }
 
-//     /* Create redis objects for all arguments. */
-//     for (c->argc = 0, j = 0; j < argc; j++) {
-//         c->argv[c->argc] = createObject(OBJ_STRING,argv[j]);
-//         c->argc++;
-//         c->argv_len_sum += sdslen(argv[j]);
-//     }
-//     zfree(argv);
-//     return C_OK;
-// }
+    /* Create redis objects for all arguments. */
+    for (c->argc = 0, j = 0; j < argc; j++) {
+        c->argv[c->argc] = createObject(OBJ_STRING,argv[j]);
+        c->argc++;
+        c->argv_len_sum += sdslen(argv[j]);
+    }
+    zfree(argv);
+    return C_OK;
+}
 
 // /* Helper function. Record protocol error details in server log,
 //  * and set the client as CLIENT_CLOSE_AFTER_REPLY and
 //  * CLIENT_PROTOCOL_ERROR. */
-// #define PROTO_DUMP_LEN 128
-// static void setProtocolError(const char *errstr, client *c) {
-//     if (server.verbosity <= LL_VERBOSE || c->flags & CLIENT_MASTER) {
-//         sds client = catClientInfoString(sdsempty(),c);
+#define PROTO_DUMP_LEN 128
+static void setProtocolError(const char *errstr, client *c) {
+    if (server.verbosity <= LL_VERBOSE || c->flags & CLIENT_MASTER) {
+        sds client = catClientInfoString(sdsempty(),c);
 
-//         /* Sample some protocol to given an idea about what was inside. */
-//         char buf[256];
-//         if (sdslen(c->querybuf)-c->qb_pos < PROTO_DUMP_LEN) {
-//             snprintf(buf,sizeof(buf),"Query buffer during protocol error: '%s'", c->querybuf+c->qb_pos);
-//         } else {
-//             snprintf(buf,sizeof(buf),"Query buffer during protocol error: '%.*s' (... more %zu bytes ...) '%.*s'", PROTO_DUMP_LEN/2, c->querybuf+c->qb_pos, sdslen(c->querybuf)-c->qb_pos-PROTO_DUMP_LEN, PROTO_DUMP_LEN/2, c->querybuf+sdslen(c->querybuf)-PROTO_DUMP_LEN/2);
-//         }
+        /* Sample some protocol to given an idea about what was inside. */
+        char buf[256];
+        if (sdslen(c->querybuf)-c->qb_pos < PROTO_DUMP_LEN) {
+            snprintf(buf,sizeof(buf),"Query buffer during protocol error: '%s'", c->querybuf+c->qb_pos);
+        } else {
+            snprintf(buf,sizeof(buf),"Query buffer during protocol error: '%.*s' (... more %zu bytes ...) '%.*s'", PROTO_DUMP_LEN/2, c->querybuf+c->qb_pos, sdslen(c->querybuf)-c->qb_pos-PROTO_DUMP_LEN, PROTO_DUMP_LEN/2, c->querybuf+sdslen(c->querybuf)-PROTO_DUMP_LEN/2);
+        }
 
-//         /* Remove non printable chars. */
-//         char *p = buf;
-//         while (*p != '\0') {
-//             if (!isprint(*p)) *p = '.';
-//             p++;
-//         }
+        /* Remove non printable chars. */
+        char *p = buf;
+        while (*p != '\0') {
+            if (!isprint(*p)) *p = '.';
+            p++;
+        }
 
-//         /* Log all the client and protocol info. */
-//         int loglevel = (c->flags & CLIENT_MASTER) ? LL_WARNING :
-//                                                     LL_VERBOSE;
-//         serverLog(loglevel,
-//             "Protocol error (%s) from client: %s. %s", errstr, client, buf);
-//         sdsfree(client);
-//     }
-//     c->flags |= (CLIENT_CLOSE_AFTER_REPLY|CLIENT_PROTOCOL_ERROR);
-// }
+        /* Log all the client and protocol info. */
+        int loglevel = (c->flags & CLIENT_MASTER) ? LL_WARNING :
+                                                    LL_VERBOSE;
+        serverLog(loglevel,
+            "Protocol error (%s) from client: %s. %s", errstr, client, buf);
+        sdsfree(client);
+    }
+    c->flags |= (CLIENT_CLOSE_AFTER_REPLY|CLIENT_PROTOCOL_ERROR);
+}
 
 // /* Process the query buffer for client 'c', setting up the client argument
 //  * vector for command execution. Returns C_OK if after running the function
@@ -2208,202 +2208,202 @@ int beforeNextClient(client *c) {
 //  * This function is called if processInputBuffer() detects that the next
 //  * command is in RESP format, so the first byte in the command is found
 //  * to be '*'. Otherwise for inline commands processInlineBuffer() is called. */
-// int processMultibulkBuffer(client *c) {
-//     char *newline = NULL;
-//     int ok;
-//     long long ll;
+int processMultibulkBuffer(client *c) {
+    char *newline = NULL;
+    int ok;
+    long long ll;
 
-//     if (c->multibulklen == 0) {
-//         /* The client should have been reset */
-//         serverAssertWithInfo(c,NULL,c->argc == 0);
+    if (c->multibulklen == 0) {
+        /* The client should have been reset */
+        serverAssertWithInfo(c,NULL,c->argc == 0);
 
-//         /* Multi bulk length cannot be read without a \r\n */
-//         newline = strchr(c->querybuf+c->qb_pos,'\r');
-//         if (newline == NULL) {
-//             if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
-//                 addReplyError(c,"Protocol error: too big mbulk count string");
-//                 setProtocolError("too big mbulk count string",c);
-//             }
-//             return C_ERR;
-//         }
+        /* Multi bulk length cannot be read without a \r\n */
+        newline = strchr(c->querybuf+c->qb_pos,'\r');
+        if (newline == NULL) {
+            if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
+                addReplyError(c,"Protocol error: too big mbulk count string");
+                setProtocolError("too big mbulk count string",c);
+            }
+            return C_ERR;
+        }
 
-//         /* Buffer should also contain \n */
-//         if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
-//             return C_ERR;
+        /* Buffer should also contain \n */
+        if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
+            return C_ERR;
 
-//         /* We know for sure there is a whole line since newline != NULL,
-//          * so go ahead and find out the multi bulk length. */
-//         serverAssertWithInfo(c,NULL,c->querybuf[c->qb_pos] == '*');
-//         ok = string2ll(c->querybuf+1+c->qb_pos,newline-(c->querybuf+1+c->qb_pos),&ll);
-//         if (!ok || ll > INT_MAX) {
-//             addReplyError(c,"Protocol error: invalid multibulk length");
-//             setProtocolError("invalid mbulk count",c);
-//             return C_ERR;
-//         } else if (ll > 10 && authRequired(c)) {
-//             addReplyError(c, "Protocol error: unauthenticated multibulk length");
-//             setProtocolError("unauth mbulk count", c);
-//             return C_ERR;
-//         }
+        /* We know for sure there is a whole line since newline != NULL,
+         * so go ahead and find out the multi bulk length. */
+        serverAssertWithInfo(c,NULL,c->querybuf[c->qb_pos] == '*');
+        ok = string2ll(c->querybuf+1+c->qb_pos,newline-(c->querybuf+1+c->qb_pos),&ll);
+        if (!ok || ll > INT_MAX) {
+            addReplyError(c,"Protocol error: invalid multibulk length");
+            setProtocolError("invalid mbulk count",c);
+            return C_ERR;
+        } else if (ll > 10 && authRequired(c)) {
+            addReplyError(c, "Protocol error: unauthenticated multibulk length");
+            setProtocolError("unauth mbulk count", c);
+            return C_ERR;
+        }
 
-//         c->qb_pos = (newline-c->querybuf)+2;
+        c->qb_pos = (newline-c->querybuf)+2;
 
-//         if (ll <= 0) return C_OK;
+        if (ll <= 0) return C_OK;
 
-//         c->multibulklen = ll;
+        c->multibulklen = ll;
 
-//         /* Setup argv array on client structure */
-//         if (c->argv) zfree(c->argv);
-//         c->argv_len = min(c->multibulklen, 1024);
-//         c->argv = zmalloc(sizeof(robj*)*c->argv_len);
-//         c->argv_len_sum = 0;
-//     }
+        /* Setup argv array on client structure */
+        if (c->argv) zfree(c->argv);
+        c->argv_len = min(c->multibulklen, 1024);
+        c->argv = zmalloc(sizeof(robj*)*c->argv_len);
+        c->argv_len_sum = 0;
+    }
 
-//     serverAssertWithInfo(c,NULL,c->multibulklen > 0);
-//     while(c->multibulklen) {
-//         /* Read bulk length if unknown */
-//         if (c->bulklen == -1) {
-//             newline = strchr(c->querybuf+c->qb_pos,'\r');
-//             if (newline == NULL) {
-//                 if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
-//                     addReplyError(c,
-//                         "Protocol error: too big bulk count string");
-//                     setProtocolError("too big bulk count string",c);
-//                     return C_ERR;
-//                 }
-//                 break;
-//             }
+    serverAssertWithInfo(c,NULL,c->multibulklen > 0);
+    while(c->multibulklen) {
+        /* Read bulk length if unknown */
+        if (c->bulklen == -1) {
+            newline = strchr(c->querybuf+c->qb_pos,'\r');
+            if (newline == NULL) {
+                if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
+                    addReplyError(c,
+                        "Protocol error: too big bulk count string");
+                    setProtocolError("too big bulk count string",c);
+                    return C_ERR;
+                }
+                break;
+            }
 
-//             /* Buffer should also contain \n */
-//             if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
-//                 break;
+            /* Buffer should also contain \n */
+            if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
+                break;
 
-//             if (c->querybuf[c->qb_pos] != '$') {
-//                 addReplyErrorFormat(c,
-//                     "Protocol error: expected '$', got '%c'",
-//                     c->querybuf[c->qb_pos]);
-//                 setProtocolError("expected $ but got something else",c);
-//                 return C_ERR;
-//             }
+            if (c->querybuf[c->qb_pos] != '$') {
+                addReplyErrorFormat(c,
+                    "Protocol error: expected '$', got '%c'",
+                    c->querybuf[c->qb_pos]);
+                setProtocolError("expected $ but got something else",c);
+                return C_ERR;
+            }
 
-//             ok = string2ll(c->querybuf+c->qb_pos+1,newline-(c->querybuf+c->qb_pos+1),&ll);
-//             if (!ok || ll < 0 ||
-//                 (!(c->flags & CLIENT_MASTER) && ll > server.proto_max_bulk_len)) {
-//                 addReplyError(c,"Protocol error: invalid bulk length");
-//                 setProtocolError("invalid bulk length",c);
-//                 return C_ERR;
-//             } else if (ll > 16384 && authRequired(c)) {
-//                 addReplyError(c, "Protocol error: unauthenticated bulk length");
-//                 setProtocolError("unauth bulk length", c);
-//                 return C_ERR;
-//             }
+            ok = string2ll(c->querybuf+c->qb_pos+1,newline-(c->querybuf+c->qb_pos+1),&ll);
+            if (!ok || ll < 0 ||
+                (!(c->flags & CLIENT_MASTER) && ll > server.proto_max_bulk_len)) {
+                addReplyError(c,"Protocol error: invalid bulk length");
+                setProtocolError("invalid bulk length",c);
+                return C_ERR;
+            } else if (ll > 16384 && authRequired(c)) {
+                addReplyError(c, "Protocol error: unauthenticated bulk length");
+                setProtocolError("unauth bulk length", c);
+                return C_ERR;
+            }
 
-//             c->qb_pos = newline-c->querybuf+2;
-//             if (!(c->flags & CLIENT_MASTER) && ll >= PROTO_MBULK_BIG_ARG) {
-//                 /* When the client is not a master client (because master
-//                  * client's querybuf can only be trimmed after data applied
-//                  * and sent to replicas).
-//                  *
-//                  * If we are going to read a large object from network
-//                  * try to make it likely that it will start at c->querybuf
-//                  * boundary so that we can optimize object creation
-//                  * avoiding a large copy of data.
-//                  *
-//                  * But only when the data we have not parsed is less than
-//                  * or equal to ll+2. If the data length is greater than
-//                  * ll+2, trimming querybuf is just a waste of time, because
-//                  * at this time the querybuf contains not only our bulk. */
-//                 if (sdslen(c->querybuf)-c->qb_pos <= (size_t)ll+2) {
-//                     sdsrange(c->querybuf,c->qb_pos,-1);
-//                     c->qb_pos = 0;
-//                     /* Hint the sds library about the amount of bytes this string is
-//                      * going to contain. */
-//                     c->querybuf = sdsMakeRoomForNonGreedy(c->querybuf,ll+2-sdslen(c->querybuf));
-//                 }
-//             }
-//             c->bulklen = ll;
-//         }
+            c->qb_pos = newline-c->querybuf+2;
+            if (!(c->flags & CLIENT_MASTER) && ll >= PROTO_MBULK_BIG_ARG) {
+                /* When the client is not a master client (because master
+                 * client's querybuf can only be trimmed after data applied
+                 * and sent to replicas).
+                 *
+                 * If we are going to read a large object from network
+                 * try to make it likely that it will start at c->querybuf
+                 * boundary so that we can optimize object creation
+                 * avoiding a large copy of data.
+                 *
+                 * But only when the data we have not parsed is less than
+                 * or equal to ll+2. If the data length is greater than
+                 * ll+2, trimming querybuf is just a waste of time, because
+                 * at this time the querybuf contains not only our bulk. */
+                if (sdslen(c->querybuf)-c->qb_pos <= (size_t)ll+2) {
+                    sdsrange(c->querybuf,c->qb_pos,-1);
+                    c->qb_pos = 0;
+                    /* Hint the sds library about the amount of bytes this string is
+                     * going to contain. */
+                    c->querybuf = sdsMakeRoomForNonGreedy(c->querybuf,ll+2-sdslen(c->querybuf));
+                }
+            }
+            c->bulklen = ll;
+        }
 
-//         /* Read bulk argument */
-//         if (sdslen(c->querybuf)-c->qb_pos < (size_t)(c->bulklen+2)) {
-//             /* Not enough data (+2 == trailing \r\n) */
-//             break;
-//         } else {
-//             /* Check if we have space in argv, grow if needed */
-//             if (c->argc >= c->argv_len) {
-//                 c->argv_len = min(c->argv_len < INT_MAX/2 ? c->argv_len*2 : INT_MAX, c->argc+c->multibulklen);
-//                 c->argv = zrealloc(c->argv, sizeof(robj*)*c->argv_len);
-//             }
+        /* Read bulk argument */
+        if (sdslen(c->querybuf)-c->qb_pos < (size_t)(c->bulklen+2)) {
+            /* Not enough data (+2 == trailing \r\n) */
+            break;
+        } else {
+            /* Check if we have space in argv, grow if needed */
+            if (c->argc >= c->argv_len) {
+                c->argv_len = min(c->argv_len < INT_MAX/2 ? c->argv_len*2 : INT_MAX, c->argc+c->multibulklen);
+                c->argv = zrealloc(c->argv, sizeof(robj*)*c->argv_len);
+            }
 
-//             /* Optimization: if a non-master client's buffer contains JUST our bulk element
-//              * instead of creating a new object by *copying* the sds we
-//              * just use the current sds string. */
-//             if (!(c->flags & CLIENT_MASTER) &&
-//                 c->qb_pos == 0 &&
-//                 c->bulklen >= PROTO_MBULK_BIG_ARG &&
-//                 sdslen(c->querybuf) == (size_t)(c->bulklen+2))
-//             {
-//                 c->argv[c->argc++] = createObject(OBJ_STRING,c->querybuf);
-//                 c->argv_len_sum += c->bulklen;
-//                 sdsIncrLen(c->querybuf,-2); /* remove CRLF */
-//                 /* Assume that if we saw a fat argument we'll see another one
-//                  * likely... */
-//                 c->querybuf = sdsnewlen(SDS_NOINIT,c->bulklen+2);
-//                 sdsclear(c->querybuf);
-//             } else {
-//                 c->argv[c->argc++] =
-//                     createStringObject(c->querybuf+c->qb_pos,c->bulklen);
-//                 c->argv_len_sum += c->bulklen;
-//                 c->qb_pos += c->bulklen+2;
-//             }
-//             c->bulklen = -1;
-//             c->multibulklen--;
-//         }
-//     }
+            /* Optimization: if a non-master client's buffer contains JUST our bulk element
+             * instead of creating a new object by *copying* the sds we
+             * just use the current sds string. */
+            if (!(c->flags & CLIENT_MASTER) &&
+                c->qb_pos == 0 &&
+                c->bulklen >= PROTO_MBULK_BIG_ARG &&
+                sdslen(c->querybuf) == (size_t)(c->bulklen+2))
+            {
+                c->argv[c->argc++] = createObject(OBJ_STRING,c->querybuf);
+                c->argv_len_sum += c->bulklen;
+                sdsIncrLen(c->querybuf,-2); /* remove CRLF */
+                /* Assume that if we saw a fat argument we'll see another one
+                 * likely... */
+                c->querybuf = sdsnewlen(SDS_NOINIT,c->bulklen+2);
+                sdsclear(c->querybuf);
+            } else {
+                c->argv[c->argc++] =
+                    createStringObject(c->querybuf+c->qb_pos,c->bulklen);
+                c->argv_len_sum += c->bulklen;
+                c->qb_pos += c->bulklen+2;
+            }
+            c->bulklen = -1;
+            c->multibulklen--;
+        }
+    }
 
-//     /* We're done when c->multibulk == 0 */
-//     if (c->multibulklen == 0) return C_OK;
+    /* We're done when c->multibulk == 0 */
+    if (c->multibulklen == 0) return C_OK;
 
-//     /* Still not ready to process the command */
-//     return C_ERR;
-// }
+    /* Still not ready to process the command */
+    return C_ERR;
+}
 
 // /* Perform necessary tasks after a command was executed:
 //  *
 //  * 1. The client is reset unless there are reasons to avoid doing it.
 //  * 2. In the case of master clients, the replication offset is updated.
 //  * 3. Propagate commands we got from our master to replicas down the line. */
-// void commandProcessed(client *c) {
-//     /* If client is blocked(including paused), just return avoid reset and replicate.
-//      *
-//      * 1. Don't reset the client structure for blocked clients, so that the reply
-//      *    callback will still be able to access the client argv and argc fields.
-//      *    The client will be reset in unblockClient().
-//      * 2. Don't update replication offset or propagate commands to replicas,
-//      *    since we have not applied the command. */
-//     if (c->flags & CLIENT_BLOCKED) return;
+void commandProcessed(client *c) {
+    /* If client is blocked(including paused), just return avoid reset and replicate.
+     *
+     * 1. Don't reset the client structure for blocked clients, so that the reply
+     *    callback will still be able to access the client argv and argc fields.
+     *    The client will be reset in unblockClient().
+     * 2. Don't update replication offset or propagate commands to replicas,
+     *    since we have not applied the command. */
+    if (c->flags & CLIENT_BLOCKED) return;
 
-//     resetClient(c);
+    resetClient(c);
 
-//     long long prev_offset = c->reploff;
-//     if (c->flags & CLIENT_MASTER && !(c->flags & CLIENT_MULTI)) {
-//         /* Update the applied replication offset of our master. */
-//         c->reploff = c->read_reploff - sdslen(c->querybuf) + c->qb_pos;
-//     }
+    long long prev_offset = c->reploff;
+    if (c->flags & CLIENT_MASTER && !(c->flags & CLIENT_MULTI)) {
+        /* Update the applied replication offset of our master. */
+        c->reploff = c->read_reploff - sdslen(c->querybuf) + c->qb_pos;
+    }
 
-//     /* If the client is a master we need to compute the difference
-//      * between the applied offset before and after processing the buffer,
-//      * to understand how much of the replication stream was actually
-//      * applied to the master state: this quantity, and its corresponding
-//      * part of the replication stream, will be propagated to the
-//      * sub-replicas and to the replication backlog. */
-//     if (c->flags & CLIENT_MASTER) {
-//         long long applied = c->reploff - prev_offset;
-//         if (applied) {
-//             replicationFeedStreamFromMasterStream(c->querybuf+c->repl_applied,applied);
-//             c->repl_applied += applied;
-//         }
-//     }
-// }
+    /* If the client is a master we need to compute the difference
+     * between the applied offset before and after processing the buffer,
+     * to understand how much of the replication stream was actually
+     * applied to the master state: this quantity, and its corresponding
+     * part of the replication stream, will be propagated to the
+     * sub-replicas and to the replication backlog. */
+    if (c->flags & CLIENT_MASTER) {
+        long long applied = c->reploff - prev_offset;
+        if (applied) {
+            // replicationFeedStreamFromMasterStream(c->querybuf+c->repl_applied,applied); //debug michael
+            c->repl_applied += applied;
+        }
+    }
+}
 
 // /* This function calls processCommand(), but also performs a few sub tasks
 //  * for the client that are useful in that context:
@@ -2413,155 +2413,155 @@ int beforeNextClient(client *c) {
 //  *
 //  * The function returns C_ERR in case the client was freed as a side effect
 //  * of processing the command, otherwise C_OK is returned. */
-// int processCommandAndResetClient(client *c) {
-//     int deadclient = 0;
-//     client *old_client = server.current_client;
-//     server.current_client = c;
-//     if (processCommand(c) == C_OK) {
-//         commandProcessed(c);
-//         /* Update the client's memory to include output buffer growth following the
-//          * processed command. */
-//         updateClientMemUsage(c);
-//     }
+int processCommandAndResetClient(client *c) {
+    int deadclient = 0;
+    client *old_client = server.current_client;
+    server.current_client = c;
+    if (processCommand(c) == C_OK) {
+        commandProcessed(c);
+        /* Update the client's memory to include output buffer growth following the
+         * processed command. */
+        updateClientMemUsage(c);
+    }
 
-//     if (server.current_client == NULL) deadclient = 1;
-//     /*
-//      * Restore the old client, this is needed because when a script
-//      * times out, we will get into this code from processEventsWhileBlocked.
-//      * Which will cause to set the server.current_client. If not restored
-//      * we will return 1 to our caller which will falsely indicate the client
-//      * is dead and will stop reading from its buffer.
-//      */
-//     server.current_client = old_client;
-//     /* performEvictions may flush slave output buffers. This may
-//      * result in a slave, that may be the active client, to be
-//      * freed. */
-//     return deadclient ? C_ERR : C_OK;
-// }
+    if (server.current_client == NULL) deadclient = 1;
+    /*
+     * Restore the old client, this is needed because when a script
+     * times out, we will get into this code from processEventsWhileBlocked.
+     * Which will cause to set the server.current_client. If not restored
+     * we will return 1 to our caller which will falsely indicate the client
+     * is dead and will stop reading from its buffer.
+     */
+    server.current_client = old_client;
+    /* performEvictions may flush slave output buffers. This may
+     * result in a slave, that may be the active client, to be
+     * freed. */
+    return deadclient ? C_ERR : C_OK;
+}
 
 
 // /* This function will execute any fully parsed commands pending on
 //  * the client. Returns C_ERR if the client is no longer valid after executing
 //  * the command, and C_OK for all other cases. */
-// int processPendingCommandAndInputBuffer(client *c) {
-//     if (c->flags & CLIENT_PENDING_COMMAND) {
-//         c->flags &= ~CLIENT_PENDING_COMMAND;
-//         if (processCommandAndResetClient(c) == C_ERR) {
-//             return C_ERR;
-//         }
-//     }
+int processPendingCommandAndInputBuffer(client *c) {
+    if (c->flags & CLIENT_PENDING_COMMAND) {
+        c->flags &= ~CLIENT_PENDING_COMMAND;
+        if (processCommandAndResetClient(c) == C_ERR) {
+            return C_ERR;
+        }
+    }
 
-//     /* Now process client if it has more data in it's buffer.
-//      *
-//      * Note: when a master client steps into this function,
-//      * it can always satisfy this condition, because its querbuf
-//      * contains data not applied. */
-//     if (c->querybuf && sdslen(c->querybuf) > 0) {
-//         return processInputBuffer(c);
-//     }
-//     return C_OK;
-// }
+    /* Now process client if it has more data in it's buffer.
+     *
+     * Note: when a master client steps into this function,
+     * it can always satisfy this condition, because its querbuf
+     * contains data not applied. */
+    if (c->querybuf && sdslen(c->querybuf) > 0) {
+        return processInputBuffer(c);
+    }
+    return C_OK;
+}
 
-// /* This function is called every time, in the client structure 'c', there is
-//  * more query buffer to process, because we read more data from the socket
-//  * or because a client was blocked and later reactivated, so there could be
-//  * pending query buffer, already representing a full command, to process.
-//  * return C_ERR in case the client was freed during the processing */
-// int processInputBuffer(client *c) {
-//     /* Keep processing while there is something in the input buffer */
-//     while(c->qb_pos < sdslen(c->querybuf)) {
-//         /* Immediately abort if the client is in the middle of something. */
-//         if (c->flags & CLIENT_BLOCKED) break;
+/* This function is called every time, in the client structure 'c', there is
+ * more query buffer to process, because we read more data from the socket
+ * or because a client was blocked and later reactivated, so there could be
+ * pending query buffer, already representing a full command, to process.
+ * return C_ERR in case the client was freed during the processing */
+int processInputBuffer(client *c) {
+    /* Keep processing while there is something in the input buffer */
+    while(c->qb_pos < sdslen(c->querybuf)) {
+        /* Immediately abort if the client is in the middle of something. */
+        if (c->flags & CLIENT_BLOCKED) break;
 
-//         /* Don't process more buffers from clients that have already pending
-//          * commands to execute in c->argv. */
-//         if (c->flags & CLIENT_PENDING_COMMAND) break;
+        /* Don't process more buffers from clients that have already pending
+         * commands to execute in c->argv. */
+        if (c->flags & CLIENT_PENDING_COMMAND) break;
 
-//         /* Don't process input from the master while there is a busy script
-//          * condition on the slave. We want just to accumulate the replication
-//          * stream (instead of replying -BUSY like we do with other clients) and
-//          * later resume the processing. */
-//         if (isInsideYieldingLongCommand() && c->flags & CLIENT_MASTER) break;
+        /* Don't process input from the master while there is a busy script
+         * condition on the slave. We want just to accumulate the replication
+         * stream (instead of replying -BUSY like we do with other clients) and
+         * later resume the processing. */
+        if (isInsideYieldingLongCommand() && c->flags & CLIENT_MASTER) break;
 
-//         /* CLIENT_CLOSE_AFTER_REPLY closes the connection once the reply is
-//          * written to the client. Make sure to not let the reply grow after
-//          * this flag has been set (i.e. don't process more commands).
-//          *
-//          * The same applies for clients we want to terminate ASAP. */
-//         if (c->flags & (CLIENT_CLOSE_AFTER_REPLY|CLIENT_CLOSE_ASAP)) break;
+        /* CLIENT_CLOSE_AFTER_REPLY closes the connection once the reply is
+         * written to the client. Make sure to not let the reply grow after
+         * this flag has been set (i.e. don't process more commands).
+         *
+         * The same applies for clients we want to terminate ASAP. */
+        if (c->flags & (CLIENT_CLOSE_AFTER_REPLY|CLIENT_CLOSE_ASAP)) break;
 
-//         /* Determine request type when unknown. */
-//         if (!c->reqtype) {
-//             if (c->querybuf[c->qb_pos] == '*') {
-//                 c->reqtype = PROTO_REQ_MULTIBULK;
-//             } else {
-//                 c->reqtype = PROTO_REQ_INLINE;
-//             }
-//         }
+        /* Determine request type when unknown. */
+        if (!c->reqtype) {
+            if (c->querybuf[c->qb_pos] == '*') {
+                c->reqtype = PROTO_REQ_MULTIBULK;
+            } else {
+                c->reqtype = PROTO_REQ_INLINE;
+            }
+        }
 
-//         if (c->reqtype == PROTO_REQ_INLINE) {
-//             if (processInlineBuffer(c) != C_OK) break;
-//         } else if (c->reqtype == PROTO_REQ_MULTIBULK) {
-//             if (processMultibulkBuffer(c) != C_OK) break;
-//         } else {
-//             serverPanic("Unknown request type");
-//         }
+        if (c->reqtype == PROTO_REQ_INLINE) {
+            if (processInlineBuffer(c) != C_OK) break;
+        } else if (c->reqtype == PROTO_REQ_MULTIBULK) {
+            if (processMultibulkBuffer(c) != C_OK) break;
+        } else {
+            serverPanic("Unknown request type");
+        }
 
-//         /* Multibulk processing could see a <= 0 length. */
-//         if (c->argc == 0) {
-//             resetClient(c);
-//         } else {
-//             /* If we are in the context of an I/O thread, we can't really
-//              * execute the command here. All we can do is to flag the client
-//              * as one that needs to process the command. */
-//             if (io_threads_op != IO_THREADS_OP_IDLE) {
-//                 serverAssert(io_threads_op == IO_THREADS_OP_READ);
-//                 c->flags |= CLIENT_PENDING_COMMAND;
-//                 break;
-//             }
+        /* Multibulk processing could see a <= 0 length. */
+        if (c->argc == 0) {
+            resetClient(c);
+        } else {
+            /* If we are in the context of an I/O thread, we can't really
+             * execute the command here. All we can do is to flag the client
+             * as one that needs to process the command. */
+            if (io_threads_op != IO_THREADS_OP_IDLE) {
+                serverAssert(io_threads_op == IO_THREADS_OP_READ);
+                c->flags |= CLIENT_PENDING_COMMAND;
+                break;
+            }
 
-//             /* We are finally ready to execute the command. */
-//             if (processCommandAndResetClient(c) == C_ERR) {
-//                 /* If the client is no longer valid, we avoid exiting this
-//                  * loop and trimming the client buffer later. So we return
-//                  * ASAP in that case. */
-//                 return C_ERR;
-//             }
-//         }
-//     }
+            /* We are finally ready to execute the command. */
+            if (processCommandAndResetClient(c) == C_ERR) {
+                /* If the client is no longer valid, we avoid exiting this
+                 * loop and trimming the client buffer later. So we return
+                 * ASAP in that case. */
+                return C_ERR;
+            }
+        }
+    }
 
-//     if (c->flags & CLIENT_MASTER) {
-//         /* If the client is a master, trim the querybuf to repl_applied,
-//          * since master client is very special, its querybuf not only
-//          * used to parse command, but also proxy to sub-replicas.
-//          *
-//          * Here are some scenarios we cannot trim to qb_pos:
-//          * 1. we don't receive complete command from master
-//          * 2. master client blocked cause of client pause
-//          * 3. io threads operate read, master client flagged with CLIENT_PENDING_COMMAND
-//          *
-//          * In these scenarios, qb_pos points to the part of the current command
-//          * or the beginning of next command, and the current command is not applied yet,
-//          * so the repl_applied is not equal to qb_pos. */
-//         if (c->repl_applied) {
-//             sdsrange(c->querybuf,c->repl_applied,-1);
-//             c->qb_pos -= c->repl_applied;
-//             c->repl_applied = 0;
-//         }
-//     } else if (c->qb_pos) {
-//         /* Trim to pos */
-//         sdsrange(c->querybuf,c->qb_pos,-1);
-//         c->qb_pos = 0;
-//     }
+    if (c->flags & CLIENT_MASTER) {
+        /* If the client is a master, trim the querybuf to repl_applied,
+         * since master client is very special, its querybuf not only
+         * used to parse command, but also proxy to sub-replicas.
+         *
+         * Here are some scenarios we cannot trim to qb_pos:
+         * 1. we don't receive complete command from master
+         * 2. master client blocked cause of client pause
+         * 3. io threads operate read, master client flagged with CLIENT_PENDING_COMMAND
+         *
+         * In these scenarios, qb_pos points to the part of the current command
+         * or the beginning of next command, and the current command is not applied yet,
+         * so the repl_applied is not equal to qb_pos. */
+        if (c->repl_applied) {
+            sdsrange(c->querybuf,c->repl_applied,-1);
+            c->qb_pos -= c->repl_applied;
+            c->repl_applied = 0;
+        }
+    } else if (c->qb_pos) {
+        /* Trim to pos */
+        sdsrange(c->querybuf,c->qb_pos,-1);
+        c->qb_pos = 0;
+    }
 
-//     /* Update client memory usage after processing the query buffer, this is
-//      * important in case the query buffer is big and wasn't drained during
-//      * the above loop (because of partially sent big commands). */
-//     if (io_threads_op == IO_THREADS_OP_IDLE)
-//         updateClientMemUsage(c);
+    /* Update client memory usage after processing the query buffer, this is
+     * important in case the query buffer is big and wasn't drained during
+     * the above loop (because of partially sent big commands). */
+    if (io_threads_op == IO_THREADS_OP_IDLE)
+        updateClientMemUsage(c);
 
-//     return C_OK;
-// }
+    return C_OK;
+}
 
 void readQueryFromClient(connection *conn) {
     client *c = connGetPrivateData(conn);
@@ -3488,16 +3488,16 @@ sds catClientInfoString(sds s, client *client) {
 //  * As a protection against this attack, Redis will terminate the connection
 //  * when a POST or "Host:" header is seen, and will log the event from
 //  * time to time (to avoid creating a DOS as a result of too many logs). */
-// void securityWarningCommand(client *c) {
-//     static time_t logged_time = 0;
-//     time_t now = time(NULL);
+void securityWarningCommand(client *c) {
+    static time_t logged_time = 0;
+    time_t now = time(NULL);
 
-//     if (llabs(now-logged_time) > 60) {
-//         serverLog(LL_WARNING,"Possible SECURITY ATTACK detected. It looks like somebody is sending POST or Host: commands to Redis. This is likely due to an attacker attempting to use Cross Protocol Scripting to compromise your Redis instance. Connection aborted.");
-//         logged_time = now;
-//     }
-//     freeClientAsync(c);
-// }
+    if (llabs(now-logged_time) > 60) {
+        serverLog(LL_WARNING,"Possible SECURITY ATTACK detected. It looks like somebody is sending POST or Host: commands to Redis. This is likely due to an attacker attempting to use Cross Protocol Scripting to compromise your Redis instance. Connection aborted.");
+        logged_time = now;
+    }
+    freeClientAsync(c);
+}
 
 // /* Keep track of the original command arguments so that we can generate
 //  * an accurate slowlog entry after the command has been executed. */
@@ -3915,9 +3915,9 @@ int closeClientOnOutputBufferLimitReached(client *c, int async) {
 // }
 
 // /* Returns bitmask of paused actions */
-// uint32_t isPausedActions(uint32_t actions_bitmask) {
-//     return (server.paused_actions & actions_bitmask);
-// }
+uint32_t isPausedActions(uint32_t actions_bitmask) {
+    return (server.paused_actions & actions_bitmask);
+}
 
 // /* Returns bitmask of paused actions */
 // uint32_t isPausedActionsWithUpdate(uint32_t actions_bitmask) {
@@ -3975,38 +3975,38 @@ int closeClientOnOutputBufferLimitReached(client *c, int async) {
 //  * Threaded I/O
 //  * ========================================================================== */
 
-// #define IO_THREADS_MAX_NUM 128
-// #ifndef CACHE_LINE_SIZE
-// #if defined(__aarch64__) && defined(__APPLE__)
-// #define CACHE_LINE_SIZE 128
-// #else
-// #define CACHE_LINE_SIZE 64
-// #endif
-// #endif
+#define IO_THREADS_MAX_NUM 128
+#ifndef CACHE_LINE_SIZE
+#if defined(__aarch64__) && defined(__APPLE__)
+#define CACHE_LINE_SIZE 128
+#else
+#define CACHE_LINE_SIZE 64
+#endif
+#endif
 
-// typedef struct __attribute__((aligned(CACHE_LINE_SIZE))) threads_pending {
-//     redisAtomic unsigned long value;
-// } threads_pending;
+typedef struct __attribute__((aligned(CACHE_LINE_SIZE))) threads_pending {
+    redisAtomic unsigned long value;
+} threads_pending;
 
 // pthread_t io_threads[IO_THREADS_MAX_NUM];
 // pthread_mutex_t io_threads_mutex[IO_THREADS_MAX_NUM];
-// threads_pending io_threads_pending[IO_THREADS_MAX_NUM];
+threads_pending io_threads_pending[IO_THREADS_MAX_NUM];
 int io_threads_op;      /* IO_THREADS_OP_IDLE, IO_THREADS_OP_READ or IO_THREADS_OP_WRITE. */ // TODO: should access to this be atomic??!
 // 
 // /* This is the list of clients each thread will serve when threaded I/O is
 //  * used. We spawn io_threads_num-1 threads, since one is the main thread
 //  * itself. */
-// list *io_threads_list[IO_THREADS_MAX_NUM];
+list *io_threads_list[IO_THREADS_MAX_NUM];
 
-// static inline unsigned long getIOPendingCount(int i) {
-//     unsigned long count = 0;
-//     atomicGetWithSync(io_threads_pending[i].value, count);
-//     return count;
-// }
+static inline unsigned long getIOPendingCount(int i) {
+    unsigned long count = 0;
+    atomicGetWithSync(io_threads_pending[i].value, count);
+    return count;
+}
 
-// static inline void setIOPendingCount(int i, unsigned long count) {
-//     atomicSetWithSync(io_threads_pending[i].value, count);
-// }
+static inline void setIOPendingCount(int i, unsigned long count) {
+    atomicSetWithSync(io_threads_pending[i].value, count);
+}
 
 // void *IOThreadMain(void *myid) {
 //     /* The ID is the thread number (from 0 to server.iothreads_num-1), and is
@@ -4278,137 +4278,137 @@ int postponeClientRead(client *c) {
 //  * Fan in: The main thread waits until getIOPendingCount() returns 0. Then
 //  * it can safely perform post-processing and return to normal synchronous
 //  * work. */
-// int handleClientsWithPendingReadsUsingThreads(void) {
-//     if (!server.io_threads_active || !server.io_threads_do_reads) return 0;
-//     int processed = listLength(server.clients_pending_read);
-//     if (processed == 0) return 0;
+int handleClientsWithPendingReadsUsingThreads(void) {
+    if (!server.io_threads_active || !server.io_threads_do_reads) return 0;
+    int processed = listLength(server.clients_pending_read);
+    if (processed == 0) return 0;
 
-//     /* Distribute the clients across N different lists. */
-//     listIter li;
-//     listNode *ln;
-//     listRewind(server.clients_pending_read,&li);
-//     int item_id = 0;
-//     while((ln = listNext(&li))) {
-//         client *c = listNodeValue(ln);
-//         int target_id = item_id % server.io_threads_num;
-//         listAddNodeTail(io_threads_list[target_id],c);
-//         item_id++;
-//     }
+    /* Distribute the clients across N different lists. */
+    listIter li;
+    listNode *ln;
+    listRewind(server.clients_pending_read,&li);
+    int item_id = 0;
+    while((ln = listNext(&li))) {
+        client *c = listNodeValue(ln);
+        int target_id = item_id % server.io_threads_num;
+        listAddNodeTail(io_threads_list[target_id],c);
+        item_id++;
+    }
 
-//     /* Give the start condition to the waiting threads, by setting the
-//      * start condition atomic var. */
-//     io_threads_op = IO_THREADS_OP_READ;
-//     for (int j = 1; j < server.io_threads_num; j++) {
-//         int count = listLength(io_threads_list[j]);
-//         setIOPendingCount(j, count);
-//     }
+    /* Give the start condition to the waiting threads, by setting the
+     * start condition atomic var. */
+    io_threads_op = IO_THREADS_OP_READ;
+    for (int j = 1; j < server.io_threads_num; j++) {
+        int count = listLength(io_threads_list[j]);
+        setIOPendingCount(j, count);
+    }
 
-//     /* Also use the main thread to process a slice of clients. */
-//     listRewind(io_threads_list[0],&li);
-//     while((ln = listNext(&li))) {
-//         client *c = listNodeValue(ln);
-//         readQueryFromClient(c->conn);
-//     }
-//     listEmpty(io_threads_list[0]);
+    /* Also use the main thread to process a slice of clients. */
+    listRewind(io_threads_list[0],&li);
+    while((ln = listNext(&li))) {
+        client *c = listNodeValue(ln);
+        readQueryFromClient(c->conn);
+    }
+    listEmpty(io_threads_list[0]);
 
-//     /* Wait for all the other threads to end their work. */
-//     while(1) {
-//         unsigned long pending = 0;
-//         for (int j = 1; j < server.io_threads_num; j++)
-//             pending += getIOPendingCount(j);
-//         if (pending == 0) break;
-//     }
+    /* Wait for all the other threads to end their work. */
+    while(1) {
+        unsigned long pending = 0;
+        for (int j = 1; j < server.io_threads_num; j++)
+            pending += getIOPendingCount(j);
+        if (pending == 0) break;
+    }
 
-//     io_threads_op = IO_THREADS_OP_IDLE;
+    io_threads_op = IO_THREADS_OP_IDLE;
 
-//     /* Run the list of clients again to process the new buffers. */
-//     while(listLength(server.clients_pending_read)) {
-//         ln = listFirst(server.clients_pending_read);
-//         client *c = listNodeValue(ln);
-//         listDelNode(server.clients_pending_read,ln);
-//         c->pending_read_list_node = NULL;
+    /* Run the list of clients again to process the new buffers. */
+    while(listLength(server.clients_pending_read)) {
+        ln = listFirst(server.clients_pending_read);
+        client *c = listNodeValue(ln);
+        listDelNode(server.clients_pending_read,ln);
+        c->pending_read_list_node = NULL;
 
-//         serverAssert(!(c->flags & CLIENT_BLOCKED));
+        serverAssert(!(c->flags & CLIENT_BLOCKED));
 
-//         if (beforeNextClient(c) == C_ERR) {
-//             /* If the client is no longer valid, we avoid
-//              * processing the client later. So we just go
-//              * to the next. */
-//             continue;
-//         }
+        if (beforeNextClient(c) == C_ERR) {
+            /* If the client is no longer valid, we avoid
+             * processing the client later. So we just go
+             * to the next. */
+            continue;
+        }
 
-//         /* Once io-threads are idle we can update the client in the mem usage */
-//         updateClientMemUsage(c);
+        /* Once io-threads are idle we can update the client in the mem usage */
+        updateClientMemUsage(c);
 
-//         if (processPendingCommandAndInputBuffer(c) == C_ERR) {
-//             /* If the client is no longer valid, we avoid
-//              * processing the client later. So we just go
-//              * to the next. */
-//             continue;
-//         }
+        if (processPendingCommandAndInputBuffer(c) == C_ERR) {
+            /* If the client is no longer valid, we avoid
+             * processing the client later. So we just go
+             * to the next. */
+            continue;
+        }
 
-//         /* We may have pending replies if a thread readQueryFromClient() produced
-//          * replies and did not put the client in pending write queue (it can't).
-//          */
-//         if (!(c->flags & CLIENT_PENDING_WRITE) && clientHasPendingReplies(c))
-//             putClientInPendingWriteQueue(c);
-//     }
+        /* We may have pending replies if a thread readQueryFromClient() produced
+         * replies and did not put the client in pending write queue (it can't).
+         */
+        if (!(c->flags & CLIENT_PENDING_WRITE) && clientHasPendingReplies(c))
+            putClientInPendingWriteQueue(c);
+    }
 
-//     /* Update processed count on server */
-//     server.stat_io_reads_processed += processed;
+    /* Update processed count on server */
+    server.stat_io_reads_processed += processed;
 
-//     return processed;
-// }
+    return processed;
+}
 
 // /* Returns the actual client eviction limit based on current configuration or
 //  * 0 if no limit. */
-// size_t getClientEvictionLimit(void) {
-//     size_t maxmemory_clients_actual = SIZE_MAX;
+size_t getClientEvictionLimit(void) {
+    size_t maxmemory_clients_actual = SIZE_MAX;
 
-//     /* Handle percentage of maxmemory*/
-//     if (server.maxmemory_clients < 0 && server.maxmemory > 0) {
-//         unsigned long long maxmemory_clients_bytes = (unsigned long long)((double)server.maxmemory * -(double) server.maxmemory_clients / 100);
-//         if (maxmemory_clients_bytes <= SIZE_MAX)
-//             maxmemory_clients_actual = maxmemory_clients_bytes;
-//     }
-//     else if (server.maxmemory_clients > 0)
-//         maxmemory_clients_actual = server.maxmemory_clients;
-//     else
-//         return 0;
+    /* Handle percentage of maxmemory*/
+    if (server.maxmemory_clients < 0 && server.maxmemory > 0) {
+        unsigned long long maxmemory_clients_bytes = (unsigned long long)((double)server.maxmemory * -(double) server.maxmemory_clients / 100);
+        if (maxmemory_clients_bytes <= SIZE_MAX)
+            maxmemory_clients_actual = maxmemory_clients_bytes;
+    }
+    else if (server.maxmemory_clients > 0)
+        maxmemory_clients_actual = server.maxmemory_clients;
+    else
+        return 0;
 
-//     /* Don't allow a too small maxmemory-clients to avoid cases where we can't communicate
-//      * at all with the server because of bad configuration */
-//     if (maxmemory_clients_actual < 1024*128)
-//         maxmemory_clients_actual = 1024*128;
+    /* Don't allow a too small maxmemory-clients to avoid cases where we can't communicate
+     * at all with the server because of bad configuration */
+    if (maxmemory_clients_actual < 1024*128)
+        maxmemory_clients_actual = 1024*128;
 
-//     return maxmemory_clients_actual;
-// }
+    return maxmemory_clients_actual;
+}
 
-// void evictClients(void) {
-//     /* Start eviction from topmost bucket (largest clients) */
-//     int curr_bucket = CLIENT_MEM_USAGE_BUCKETS-1;
-//     listIter bucket_iter;
-//     listRewind(server.client_mem_usage_buckets[curr_bucket].clients, &bucket_iter);
-//     size_t client_eviction_limit = getClientEvictionLimit();
-//     if (client_eviction_limit == 0)
-//         return;
-//     while (server.stat_clients_type_memory[CLIENT_TYPE_NORMAL] +
-//            server.stat_clients_type_memory[CLIENT_TYPE_PUBSUB] >= client_eviction_limit) {
-//         listNode *ln = listNext(&bucket_iter);
-//         if (ln) {
-//             client *c = ln->value;
-//             sds ci = catClientInfoString(sdsempty(),c);
-//             serverLog(LL_NOTICE, "Evicting client: %s", ci);
-//             freeClient(c);
-//             sdsfree(ci);
-//             server.stat_evictedclients++;
-//         } else {
-//             curr_bucket--;
-//             if (curr_bucket < 0) {
-//                 serverLog(LL_WARNING, "Over client maxmemory after evicting all evictable clients");
-//                 break;
-//             }
-//             listRewind(server.client_mem_usage_buckets[curr_bucket].clients, &bucket_iter);
-//         }
-//     }
-// }
+void evictClients(void) {
+    /* Start eviction from topmost bucket (largest clients) */
+    int curr_bucket = CLIENT_MEM_USAGE_BUCKETS-1;
+    listIter bucket_iter;
+    listRewind(server.client_mem_usage_buckets[curr_bucket].clients, &bucket_iter);
+    size_t client_eviction_limit = getClientEvictionLimit();
+    if (client_eviction_limit == 0)
+        return;
+    while (server.stat_clients_type_memory[CLIENT_TYPE_NORMAL] +
+           server.stat_clients_type_memory[CLIENT_TYPE_PUBSUB] >= client_eviction_limit) {
+        listNode *ln = listNext(&bucket_iter);
+        if (ln) {
+            client *c = ln->value;
+            sds ci = catClientInfoString(sdsempty(),c);
+            serverLog(LL_NOTICE, "Evicting client: %s", ci);
+            freeClient(c);
+            sdsfree(ci);
+            server.stat_evictedclients++;
+        } else {
+            curr_bucket--;
+            if (curr_bucket < 0) {
+                serverLog(LL_WARNING, "Over client maxmemory after evicting all evictable clients");
+                break;
+            }
+            listRewind(server.client_mem_usage_buckets[curr_bucket].clients, &bucket_iter);
+        }
+    }
+}

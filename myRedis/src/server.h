@@ -31,12 +31,31 @@
 
 #include "version.h"
 
+
+/* min/max */
+#undef min
+#undef max
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
 typedef long long mstime_t; /* millisecond time type. */
 typedef long long ustime_t; /* microsecond time type. */
 #define REDISMODULE_CORE 1 // about redismodule
 typedef struct redisObject robj;
 #include "redismodule.h"    /* Redis modules API defines. */
 
+
+/* AOF states */
+#define AOF_OFF 0             /* AOF is off */
+#define AOF_ON 1              /* AOF is on */
+#define AOF_WAIT_REWRITE 2    /* AOF waits rewrite to start appending */
+
+/* Return values for ACLCheckAllPerm(). */
+#define ACL_OK 0
+#define ACL_DENIED_CMD 1
+#define ACL_DENIED_KEY 2
+#define ACL_DENIED_AUTH 3 /* Only used for ACL LOG entries. */
+#define ACL_DENIED_CHANNEL 4 /* Only used for pub/sub commands */
 
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
@@ -102,6 +121,36 @@ typedef struct redisObject robj;
 #define LL_RAW (1<<10) /* Modifier to log without timestamp */
 
 
+/* Command flags. Please check the definition of struct redisCommand in this file
+ * for more information about the meaning of every flag. */
+#define CMD_WRITE (1ULL<<0)
+#define CMD_READONLY (1ULL<<1)
+#define CMD_DENYOOM (1ULL<<2)
+#define CMD_MODULE (1ULL<<3)           /* Command exported by module. */
+#define CMD_ADMIN (1ULL<<4)
+#define CMD_PUBSUB (1ULL<<5)
+#define CMD_NOSCRIPT (1ULL<<6)
+#define CMD_BLOCKING (1ULL<<8)       /* Has potential to block. */
+#define CMD_LOADING (1ULL<<9)
+#define CMD_STALE (1ULL<<10)
+#define CMD_SKIP_MONITOR (1ULL<<11)
+#define CMD_SKIP_SLOWLOG (1ULL<<12)
+#define CMD_ASKING (1ULL<<13)
+#define CMD_FAST (1ULL<<14)
+#define CMD_NO_AUTH (1ULL<<15)
+#define CMD_MAY_REPLICATE (1ULL<<16)
+#define CMD_SENTINEL (1ULL<<17)
+#define CMD_ONLY_SENTINEL (1ULL<<18)
+#define CMD_NO_MANDATORY_KEYS (1ULL<<19)
+#define CMD_PROTECTED (1ULL<<20)
+#define CMD_MODULE_GETKEYS (1ULL<<21)  /* Use the modules getkeys interface. */
+#define CMD_MODULE_NO_CLUSTER (1ULL<<22) /* Deny on Redis Cluster. */
+#define CMD_NO_ASYNC_LOADING (1ULL<<23)
+#define CMD_NO_MULTI (1ULL<<24)
+#define CMD_MOVABLE_KEYS (1ULL<<25) /* The legacy range spec doesn't cover all keys.
+                                     * Populated by populateCommandLegacyRangeSpec. */
+#define CMD_ALLOW_BUSY ((1ULL<<26))
+#define CMD_MODULE_GETCHANNELS (1ULL<<27)  /* Use the modules getchannels interface. */
 
 #define LRU_BITS 24
 #define EMPTYDB_NO_FLAGS 0      /* No flags. */
@@ -110,6 +159,17 @@ typedef struct redisObject robj;
 #define TLS_CLIENT_AUTH_NO 0
 #define TLS_CLIENT_AUTH_YES 1
 #define TLS_CLIENT_AUTH_OPTIONAL 2
+
+/* Bucket sizes for client eviction pools. Each bucket stores clients with
+ * memory usage of up to twice the size of the bucket below it. */
+#define CLIENT_MEM_USAGE_BUCKET_MIN_LOG 15 /* Bucket sizes start at up to 32KB (2^15) */
+#define CLIENT_MEM_USAGE_BUCKET_MAX_LOG 33 /* Bucket for largest clients: sizes above 4GB (2^32) */
+#define CLIENT_MEM_USAGE_BUCKETS (1+CLIENT_MEM_USAGE_BUCKET_MAX_LOG-CLIENT_MEM_USAGE_BUCKET_MIN_LOG)
+
+
+#define DISK_ERROR_TYPE_AOF 1       /* Don't accept writes: AOF errors. */
+#define DISK_ERROR_TYPE_RDB 2       /* Don't accept writes: RDB errors. */
+#define DISK_ERROR_TYPE_NONE 0      /* No problems, we can accept writes. */
 
 /* Client flags */
 #define CLIENT_SLAVE (1<<0)   /* This client is a replica */
@@ -269,6 +329,11 @@ typedef struct redisObject robj;
 #define CLIENT_TYPE_MASTER 3 /* Master. */
 #define CLIENT_TYPE_COUNT 4  /* Total number of client types. */
 #define CLIENT_TYPE_OBUF_COUNT 3 /* Number of clients to expose to output
+
+/* Busy module flags, see busy_module_yield_flags */
+#define BUSY_MODULE_YIELD_NONE (0)
+#define BUSY_MODULE_YIELD_EVENTS (1<<0)
+#define BUSY_MODULE_YIELD_CLIENTS (1<<1)
 
 
 /* We can print the stacktrace, so our assert is defined this way: */
@@ -549,143 +614,7 @@ struct sharedObjectsStruct {
     sds minstring, maxstring;
 };
 
-/* Redis command structure.
- *
- * Note that the command table is in commands.c and it is auto-generated.
- *
- * This is the meaning of the flags:
- *
- * CMD_WRITE:       Write command (may modify the key space).
- *
- * CMD_READONLY:    Commands just reading from keys without changing the content.
- *                  Note that commands that don't read from the keyspace such as
- *                  TIME, SELECT, INFO, administrative commands, and connection
- *                  or transaction related commands (multi, exec, discard, ...)
- *                  are not flagged as read-only commands, since they affect the
- *                  server or the connection in other ways.
- *
- * CMD_DENYOOM:     May increase memory usage once called. Don't allow if out
- *                  of memory.
- *
- * CMD_ADMIN:       Administrative command, like SAVE or SHUTDOWN.
- *
- * CMD_PUBSUB:      Pub/Sub related command.
- *
- * CMD_NOSCRIPT:    Command not allowed in scripts.
- *
- * CMD_BLOCKING:    The command has the potential to block the client.
- *
- * CMD_LOADING:     Allow the command while loading the database.
- *
- * CMD_NO_ASYNC_LOADING: Deny during async loading (when a replica uses diskless
- *                       sync swapdb, and allows access to the old dataset)
- *
- * CMD_STALE:       Allow the command while a slave has stale data but is not
- *                  allowed to serve this data. Normally no command is accepted
- *                  in this condition but just a few.
- *
- * CMD_SKIP_MONITOR:  Do not automatically propagate the command on MONITOR.
- *
- * CMD_SKIP_SLOWLOG:  Do not automatically propagate the command to the slowlog.
- *
- * CMD_ASKING:      Perform an implicit ASKING for this command, so the
- *                  command will be accepted in cluster mode if the slot is marked
- *                  as 'importing'.
- *
- * CMD_FAST:        Fast command: O(1) or O(log(N)) command that should never
- *                  delay its execution as long as the kernel scheduler is giving
- *                  us time. Note that commands that may trigger a DEL as a side
- *                  effect (like SET) are not fast commands.
- *
- * CMD_NO_AUTH:     Command doesn't require authentication
- *
- * CMD_MAY_REPLICATE:   Command may produce replication traffic, but should be
- *                      allowed under circumstances where write commands are disallowed.
- *                      Examples include PUBLISH, which replicates pubsub messages,and
- *                      EVAL, which may execute write commands, which are replicated,
- *                      or may just execute read commands. A command can not be marked
- *                      both CMD_WRITE and CMD_MAY_REPLICATE
- *
- * CMD_SENTINEL:    This command is present in sentinel mode.
- *
- * CMD_ONLY_SENTINEL: This command is present only when in sentinel mode.
- *                    And should be removed from redis.
- *
- * CMD_NO_MANDATORY_KEYS: This key arguments for this command are optional.
- *
- * CMD_NO_MULTI: The command is not allowed inside a transaction
- *
- * The following additional flags are only used in order to put commands
- * in a specific ACL category. Commands can have multiple ACL categories.
- * See redis.conf for the exact meaning of each.
- *
- * @keyspace, @read, @write, @set, @sortedset, @list, @hash, @string, @bitmap,
- * @hyperloglog, @stream, @admin, @fast, @slow, @pubsub, @blocking, @dangerous,
- * @connection, @transaction, @scripting, @geo.
- *
- * Note that:
- *
- * 1) The read-only flag implies the @read ACL category.
- * 2) The write flag implies the @write ACL category.
- * 3) The fast flag implies the @fast ACL category.
- * 4) The admin flag implies the @admin and @dangerous ACL category.
- * 5) The pub-sub flag implies the @pubsub ACL category.
- * 6) The lack of fast flag implies the @slow ACL category.
- * 7) The non obvious "keyspace" category includes the commands
- *    that interact with keys without having anything to do with
- *    specific data structures, such as: DEL, RENAME, MOVE, SELECT,
- *    TYPE, EXPIRE*, PEXPIRE*, TTL, PTTL, ...
- */
-struct redisCommand {
-    /* Declarative data */
-    const char *declared_name; /* A string representing the command declared_name.
-                                * It is a const char * for native commands and SDS for module commands. */
-    const char *summary; /* Summary of the command (optional). */
-    const char *complexity; /* Complexity description (optional). */
-    const char *since; /* Debut version of the command (optional). */
-    int doc_flags; /* Flags for documentation (see CMD_DOC_*). */
-    const char *replaced_by; /* In case the command is deprecated, this is the successor command. */
-    const char *deprecated_since; /* In case the command is deprecated, when did it happen? */
-    // redisCommandGroup group; /* Command group */
-    // commandHistory *history; /* History of the command */
-    const char **tips; /* An array of strings that are meant to be tips for clients/proxies regarding this command */
-    // redisCommandProc *proc; /* Command implementation */
-    int arity; /* Number of arguments, it is possible to use -N to say >= N */
-    uint64_t flags; /* Command flags, see CMD_*. */
-    uint64_t acl_categories; /* ACl categories, see ACL_CATEGORY_*. */
-    // keySpec key_specs_static[STATIC_KEY_SPECS_NUM]; /* Key specs. See keySpec */
-    /* Use a function to determine keys arguments in a command line.
-     * Used for Redis Cluster redirect (may be NULL) */
-    // redisGetKeysProc *getkeys_proc;
-    /* Array of subcommands (may be NULL) */
-    struct redisCommand *subcommands;
-    /* Array of arguments (may be NULL) */
-    struct redisCommandArg *args;
 
-    /* Runtime populated data */
-    long long microseconds, calls, rejected_calls, failed_calls;
-    int id;     /* Command ID. This is a progressive ID starting from 0 that
-                   is assigned at runtime, and is used in order to check
-                   ACLs. A connection is able to execute a given command if
-                   the user associated to the connection has this command
-                   bit set in the bitmap of allowed commands. */
-    sds fullname; /* A SDS string representing the command fullname. */
-    struct hdr_histogram* latency_histogram; /*points to the command latency command histogram (unit of time nanosecond) */
-    // keySpec *key_specs;
-    // keySpec legacy_range_key_spec; /* The legacy (first,last,step) key spec is
-    //                                  * still maintained (if applicable) so that
-    //                                  * we can still support the reply format of
-    //                                  * COMMAND INFO and COMMAND GETKEYS */
-    int num_args;
-    int num_history;
-    int num_tips;
-    int key_specs_num;
-    int key_specs_max;
-    dict *subcommands_dict; /* A dictionary that holds the subcommands, the key is the subcommand sds name
-                            //  * (not the fullname), and the value is the redisCommand structure pointer. */
-    struct redisCommand *parent;
-    struct RedisModuleCommand *module_cmd; /* A pointer to the module command data (NULL if native command) */
-};
 
 /* Client MULTI/EXEC state */
 typedef struct multiCmd {
@@ -744,7 +673,7 @@ typedef struct client {
     int slot;               /* The slot the client is executing against. Set to -1 if no slot is being used */
     time_t lastinteraction; /* Time of the last interaction, used for timeout */
     time_t obuf_soft_limit_reached_time;
-    // int authenticated;      /* Needed when the default user requires auth. */
+    int authenticated;      /* Needed when the default user requires auth. */
     int replstate;          /* Replication state if this is a slave. */
     int repl_start_cmd_stream_on_ack; /* Install slave write handler on first ACK. */
     int repldbfd;           /* Replication DB file descriptor. */
@@ -856,7 +785,7 @@ struct redisServer {
     size_t initial_memory_usage; /* Bytes used after initialization. */
     // int always_show_logo;       /* Show logo even for non-stdout logging. */
     // int in_exec;                /* Are we inside EXEC? */
-    // int busy_module_yield_flags;         /* Are we inside a busy module? (triggered by RM_Yield). see BUSY_MODULE_YIELD_ flags. */
+    int busy_module_yield_flags;         /* Are we inside a busy module? (triggered by RM_Yield). see BUSY_MODULE_YIELD_ flags. */
     // const char *busy_module_yield_reply; /* When non-null, we are inside RM_Yield. */
     int core_propagates;        /* Is the core (in oppose to the module subsystem) is in charge of calling propagatePendingCommands? */
     int module_ctx_nesting;     /* moduleCreateContext() nesting level */
@@ -893,7 +822,7 @@ struct redisServer {
     client *current_client;     /* Current client executing the command. */
 
     // /* Stuff for client mem eviction */
-    // clientMemUsageBucket client_mem_usage_buckets[CLIENT_MEM_USAGE_BUCKETS];
+    clientMemUsageBucket client_mem_usage_buckets[CLIENT_MEM_USAGE_BUCKETS];
 
     // rax *clients_timeout_table; /* Radix tree for blocked clients timeouts. */
     int in_nested_call;         /* If > 0, in a nested call of a call */
@@ -930,7 +859,7 @@ struct redisServer {
     // long long stat_expired_time_cap_reached_count; /* Early expire cycle stops.*/
     // long long stat_expire_cycle_time_used; /* Cumulative microseconds used. */
     // long long stat_evictedkeys;     /* Number of evicted keys (maxmemory) */
-    // long long stat_evictedclients;  /* Number of evicted clients */
+    long long stat_evictedclients;  /* Number of evicted clients */
     // long long stat_total_eviction_exceeded_time;  /* Total time over the memory limit, unit us */
     // monotime stat_last_eviction_exceeded_time;  /* Timestamp of current eviction start, unit us */
     // long long stat_keyspace_hits;   /* Number of successful lookups of keys */
@@ -1021,7 +950,7 @@ struct redisServer {
     int latency_tracking_info_percentiles_len;
     /* AOF persistence */
     // int aof_enabled;                /* AOF configuration */
-    // int aof_state;                  /* AOF_(ON|OFF|WAIT_REWRITE) */
+    int aof_state;                  /* AOF_(ON|OFF|WAIT_REWRITE) */
     // int aof_fsync;                  /* Kind of fsync() policy */
     // char *aof_filename;             /* Basename of the AOF file and manifest file */
     // char *aof_dirname;              /* Name of the AOF directory */
@@ -1047,7 +976,7 @@ struct redisServer {
     // unsigned long aof_delayed_fsync;  /* delayed AOF fsync() counter */
     // int aof_rewrite_incremental_fsync;/* fsync incrementally while aof rewriting? */
     // int rdb_save_incremental_fsync;   /* fsync incrementally while rdb saving? */
-    // int aof_last_write_status;      /* C_OK or C_ERR */
+    int aof_last_write_status;      /* C_OK or C_ERR */
     // int aof_last_write_errno;       /* Valid if aof write/fsync status is ERR */
     // int aof_load_truncated;         /* Don't stop on unexpected AOF EOF. */
     // int aof_use_rdb_preamble;       /* Specify base AOF to use RDB encoding on AOF rewrites. */
@@ -1063,7 +992,7 @@ struct redisServer {
     // long long rdb_last_load_keys_expired;  /* number of expired keys when loading RDB */
     // long long rdb_last_load_keys_loaded;   /* number of loaded keys when loading RDB */
     struct saveparam *saveparams;   /* Save points array for RDB */
-    // int saveparamslen;              /* Number of saving points */
+    int saveparamslen;              /* Number of saving points */
     // char *rdb_filename;             /* Name of RDB file */
     // int rdb_compression;            /* Use compression in RDB? */
     int rdb_checksum;               /* Use RDB checksum? */
@@ -1076,7 +1005,7 @@ struct redisServer {
     // int rdb_bgsave_scheduled;       /* BGSAVE when possible if true. */
     // int rdb_child_type;             /* Type of save by active child. */
     // int lastbgsave_status;          /* C_OK or C_ERR */
-    // int stop_writes_on_bgsave_err;  /* Don't allow writes if can't BGSAVE */
+    int stop_writes_on_bgsave_err;  /* Don't allow writes if can't BGSAVE */
     // int rdb_pipe_read;              /* RDB pipe used to transfer the rdb data */
     //                                 /* to the parent process in diskless repl. */
     // int rdb_child_exit_pipe;        /* Used by the diskless parent allow child exit. */
@@ -1179,13 +1108,13 @@ struct redisServer {
     // /* Limits */
     unsigned int maxclients;            /* Max number of simultaneous clients */
     unsigned long long maxmemory;   /* Max number of memory bytes to use */
-    // ssize_t maxmemory_clients;       /* Memory limit for total client buffers */
+    ssize_t maxmemory_clients;       /* Memory limit for total client buffers */
     int maxmemory_policy;           /* Policy for key eviction */
     // int maxmemory_samples;          /* Precision of random sampling */
     // int maxmemory_eviction_tenacity;/* Aggressiveness of eviction processing */
     // int lfu_log_factor;             /* LFU logarithmic counter factor. */
     // int lfu_decay_time;             /* LFU counter decay factor. */
-    // long long proto_max_bulk_len;   /* Protocol bulk length maximum size. */
+    long long proto_max_bulk_len;   /* Protocol bulk length maximum size. */
     // int oom_score_adj_values[CONFIG_OOM_COUNT];   /* Linux oom_score_adj configuration */
     // int oom_score_adj;                            /* If true, oom_score_adj is managed */
     // int disable_thp;                              /* If true, disable THP by syscall */
@@ -1598,6 +1527,147 @@ typedef enum {
     ENUM_CONFIG,
     SPECIAL_CONFIG,
 } configType;
+typedef void redisCommandProc(client *c);
+
+/* Redis command structure.
+ *
+ * Note that the command table is in commands.c and it is auto-generated.
+ *
+ * This is the meaning of the flags:
+ *
+ * CMD_WRITE:       Write command (may modify the key space).
+ *
+ * CMD_READONLY:    Commands just reading from keys without changing the content.
+ *                  Note that commands that don't read from the keyspace such as
+ *                  TIME, SELECT, INFO, administrative commands, and connection
+ *                  or transaction related commands (multi, exec, discard, ...)
+ *                  are not flagged as read-only commands, since they affect the
+ *                  server or the connection in other ways.
+ *
+ * CMD_DENYOOM:     May increase memory usage once called. Don't allow if out
+ *                  of memory.
+ *
+ * CMD_ADMIN:       Administrative command, like SAVE or SHUTDOWN.
+ *
+ * CMD_PUBSUB:      Pub/Sub related command.
+ *
+ * CMD_NOSCRIPT:    Command not allowed in scripts.
+ *
+ * CMD_BLOCKING:    The command has the potential to block the client.
+ *
+ * CMD_LOADING:     Allow the command while loading the database.
+ *
+ * CMD_NO_ASYNC_LOADING: Deny during async loading (when a replica uses diskless
+ *                       sync swapdb, and allows access to the old dataset)
+ *
+ * CMD_STALE:       Allow the command while a slave has stale data but is not
+ *                  allowed to serve this data. Normally no command is accepted
+ *                  in this condition but just a few.
+ *
+ * CMD_SKIP_MONITOR:  Do not automatically propagate the command on MONITOR.
+ *
+ * CMD_SKIP_SLOWLOG:  Do not automatically propagate the command to the slowlog.
+ *
+ * CMD_ASKING:      Perform an implicit ASKING for this command, so the
+ *                  command will be accepted in cluster mode if the slot is marked
+ *                  as 'importing'.
+ *
+ * CMD_FAST:        Fast command: O(1) or O(log(N)) command that should never
+ *                  delay its execution as long as the kernel scheduler is giving
+ *                  us time. Note that commands that may trigger a DEL as a side
+ *                  effect (like SET) are not fast commands.
+ *
+ * CMD_NO_AUTH:     Command doesn't require authentication
+ *
+ * CMD_MAY_REPLICATE:   Command may produce replication traffic, but should be
+ *                      allowed under circumstances where write commands are disallowed.
+ *                      Examples include PUBLISH, which replicates pubsub messages,and
+ *                      EVAL, which may execute write commands, which are replicated,
+ *                      or may just execute read commands. A command can not be marked
+ *                      both CMD_WRITE and CMD_MAY_REPLICATE
+ *
+ * CMD_SENTINEL:    This command is present in sentinel mode.
+ *
+ * CMD_ONLY_SENTINEL: This command is present only when in sentinel mode.
+ *                    And should be removed from redis.
+ *
+ * CMD_NO_MANDATORY_KEYS: This key arguments for this command are optional.
+ *
+ * CMD_NO_MULTI: The command is not allowed inside a transaction
+ *
+ * The following additional flags are only used in order to put commands
+ * in a specific ACL category. Commands can have multiple ACL categories.
+ * See redis.conf for the exact meaning of each.
+ *
+ * @keyspace, @read, @write, @set, @sortedset, @list, @hash, @string, @bitmap,
+ * @hyperloglog, @stream, @admin, @fast, @slow, @pubsub, @blocking, @dangerous,
+ * @connection, @transaction, @scripting, @geo.
+ *
+ * Note that:
+ *
+ * 1) The read-only flag implies the @read ACL category.
+ * 2) The write flag implies the @write ACL category.
+ * 3) The fast flag implies the @fast ACL category.
+ * 4) The admin flag implies the @admin and @dangerous ACL category.
+ * 5) The pub-sub flag implies the @pubsub ACL category.
+ * 6) The lack of fast flag implies the @slow ACL category.
+ * 7) The non obvious "keyspace" category includes the commands
+ *    that interact with keys without having anything to do with
+ *    specific data structures, such as: DEL, RENAME, MOVE, SELECT,
+ *    TYPE, EXPIRE*, PEXPIRE*, TTL, PTTL, ...
+ */
+struct redisCommand {
+    /* Declarative data */
+    const char *declared_name; /* A string representing the command declared_name.
+                                * It is a const char * for native commands and SDS for module commands. */
+    const char *summary; /* Summary of the command (optional). */
+    const char *complexity; /* Complexity description (optional). */
+    const char *since; /* Debut version of the command (optional). */
+    int doc_flags; /* Flags for documentation (see CMD_DOC_*). */
+    const char *replaced_by; /* In case the command is deprecated, this is the successor command. */
+    const char *deprecated_since; /* In case the command is deprecated, when did it happen? */
+    // redisCommandGroup group; /* Command group */
+    // commandHistory *history; /* History of the command */
+    const char **tips; /* An array of strings that are meant to be tips for clients/proxies regarding this command */
+    redisCommandProc *proc; /* Command implementation */
+    int arity; /* Number of arguments, it is possible to use -N to say >= N */
+    uint64_t flags; /* Command flags, see CMD_*. */
+    uint64_t acl_categories; /* ACl categories, see ACL_CATEGORY_*. */
+    // keySpec key_specs_static[STATIC_KEY_SPECS_NUM]; /* Key specs. See keySpec */
+    /* Use a function to determine keys arguments in a command line.
+     * Used for Redis Cluster redirect (may be NULL) */
+    // redisGetKeysProc *getkeys_proc;
+    /* Array of subcommands (may be NULL) */
+    struct redisCommand *subcommands;
+    /* Array of arguments (may be NULL) */
+    struct redisCommandArg *args;
+
+    /* Runtime populated data */
+    long long microseconds, calls, rejected_calls, failed_calls;
+    int id;     /* Command ID. This is a progressive ID starting from 0 that
+                   is assigned at runtime, and is used in order to check
+                   ACLs. A connection is able to execute a given command if
+                   the user associated to the connection has this command
+                   bit set in the bitmap of allowed commands. */
+    sds fullname; /* A SDS string representing the command fullname. */
+    struct hdr_histogram* latency_histogram; /*points to the command latency command histogram (unit of time nanosecond) */
+    // keySpec *key_specs;
+    // keySpec legacy_range_key_spec; /* The legacy (first,last,step) key spec is
+    //                                  * still maintained (if applicable) so that
+    //                                  * we can still support the reply format of
+    //                                  * COMMAND INFO and COMMAND GETKEYS */
+    int num_args;
+    int num_history;
+    int num_tips;
+    int key_specs_num;
+    int key_specs_max;
+    dict *subcommands_dict; /* A dictionary that holds the subcommands, the key is the subcommand sds name
+                            //  * (not the fullname), and the value is the redisCommand structure pointer. */
+    struct redisCommand *parent;
+    struct RedisModuleCommand *module_cmd; /* A pointer to the module command data (NULL if native command) */
+};
+
+
 
 void _serverAssert(const char *estr, const char *file, int line);
 /* acl.c -- Authentication related prototypes. */
@@ -1648,15 +1718,28 @@ void addReplyErrorArity(client *c);
 void addReply(client *c, robj *obj);
 void authCommand(client *c);
 void pingCommand(client *c);
+struct redisCommand *lookupCommand(robj **argv, int argc);
+void rejectCommandFormat(client *c, const char *fmt, ...);
+int isInsideYieldingLongCommand();
+
+int processCommand(client *c);
+int scriptIsTimedout();
+void securityWarningCommand(client *c);
+int commandCheckExistence(client *c, sds *err);
+uint64_t getCommandFlags(client *c);
+void scriptCommand(client *c);
+int mustObeyClient(client *c);
+void evictClients(void);
+void addReplyError(client *c, const char *err);
 
 void incrementErrorCount(const char *fullerr, size_t namelen);
 // void showLatestBacklog(void);
 size_t stringObjectLen(robj *o);
 size_t getClientMemoryUsage(client *c, size_t *output_buffer_mem_usage);
-
-
-
-
+void handleBlockedClientsTimeout(void);
+int handleClientsWithPendingReadsUsingThreads(void);
+int updateClientMemUsage(client *c);
+int processPendingCommandAndInputBuffer(client *c);
 
 #include "rdb.h"
 
