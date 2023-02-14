@@ -273,8 +273,14 @@ typedef struct redisObject robj;
 
 /* We can print the stacktrace, so our assert is defined this way: */
 // #define serverAssertWithInfo(_c,_o,_e) ((_e)?(void)0 : (_serverAssertWithInfo(_c,_o,#_e,__FILE__,__LINE__),redis_unreachable()))
+#ifdef __GNUC__
+void _serverPanic(const char *file, int line, const char *msg, ...)
+    __attribute__ ((format (printf, 3, 4)));
+#else
+void _serverPanic(const char *file, int line, const char *msg, ...);
+#endif
 #define serverAssert(_e) ((_e)?(void)0 : (_serverAssert(#_e,__FILE__,__LINE__),redis_unreachable()))
-// #define serverPanic(...) _serverPanic(__FILE__,__LINE__,__VA_ARGS__),redis_unreachable()
+#define serverPanic(...) _serverPanic(__FILE__,__LINE__,__VA_ARGS__),redis_unreachable()
 
 /* This structure can be optionally passed to RDB save/load functions in
  * order to implement additional functionalities, by storing and loading
@@ -293,6 +299,16 @@ typedef struct rdbSaveInfo {
     char repl_id[CONFIG_RUN_ID_SIZE+1];     /* Replication ID. */
     long long repl_offset;                  /* Replication offset. */
 } rdbSaveInfo;
+
+typedef struct {
+    sds name;       /* The username as an SDS string. */
+    uint32_t flags; /* See USER_FLAG_* */
+    list *passwords; /* A list of SDS valid passwords for this user. */
+    list *selectors; /* A list of selectors this user validates commands
+                        against. This list will always contain at least
+                        one selector for backwards compatibility. */
+    robj *acl_string; /* cached string represent of ACLs */
+} user;
 
 struct RedisModule;
 struct RedisModuleIO;
@@ -439,7 +455,20 @@ typedef struct {
     size_t mem_usage_sum;
 } clientMemUsageBucket;
 
+/* Replication error behavior determines the replica behavior
+ * when it receives an error over the replication stream. In
+ * either case the error is logged. */
+typedef enum {
+    PROPAGATION_ERR_BEHAVIOR_IGNORE = 0,
+    PROPAGATION_ERR_BEHAVIOR_PANIC,
+    PROPAGATION_ERR_BEHAVIOR_PANIC_ON_REPLICAS
+} replicationErrorBehavior;
 
+typedef struct clientBufferLimitsConfig {
+    unsigned long long hard_limit_bytes;
+    unsigned long long soft_limit_bytes;
+    time_t soft_limit_seconds;
+} clientBufferLimitsConfig;
 
 
 /* Opaque type for the Slot to Key API. */
@@ -463,6 +492,24 @@ typedef struct redisDb {
     // list *defrag_later;         /* List of key names to attempt to defrag one by one, gradually. */
     clusterSlotToKeyMapping *slots_to_keys; /* Array of slots to keys. Only used in cluster mode (db 0). */
 } redisDb;
+
+/* Replication backlog is not separate memory, it just is one consumer of
+ * the global replication buffer. This structure records the reference of
+ * replication buffers. Since the replication buffer block list may be very long,
+ * it would cost much time to search replication offset on partial resync, so
+ * we use one rax tree to index some blocks every REPL_BACKLOG_INDEX_PER_BLOCKS
+ * to make searching offset from replication buffer blocks list faster. */
+typedef struct replBacklog {
+    listNode *ref_repl_buf_node; /* Referenced node of replication buffer blocks,
+                                  * see the definition of replBufBlock. */
+    size_t unindexed_count;      /* The count from last creating index block. */
+    // rax *blocks_index;           /* The index of recorded blocks of replication
+    //                               * buffer for quickly searching replication
+    //                               * offset on partial resynchronization. */
+    long long histlen;           /* Backlog actual data length */
+    long long offset;            /* Replication "master offset" of first
+                                  * byte in the replication backlog buffer.*/
+} replBacklog;
 
 /* forward declaration for functions ctx */
 typedef struct functionsLibCtx functionsLibCtx;
@@ -681,7 +728,7 @@ typedef struct client {
     struct redisCommand *realcmd; /* The original command that was executed by the client,
     //                                  Used to update error stats in case the c->cmd was modified
     //                                  during the command invocation (like on GEOADD for example). */
-    // user *user;             /* User associated with this connection. If the
+    user *user;             /* User associated with this connection. If the
     //                            user is set to NULL the connection can do
     //                            anything (admin). */
     int reqtype;            /* Request protocol type: PROTO_REQ_* */
@@ -744,7 +791,7 @@ typedef struct client {
     // /* If this client is in tracking mode and this field is non zero,
     //  * invalidation messages for keys fetched by this client will be send to
     //  * the specified client ID. */
-    // uint64_t client_tracking_redirection;
+    uint64_t client_tracking_redirection;
     // rax *client_tracking_prefixes; /* A dictionary of prefixes we are already
     //                                   subscribed to in BCAST mode, in the
     //                                   context of client side caching. */
@@ -926,13 +973,13 @@ struct redisServer {
     // double stat_module_progress;   /* Module save progress. */
     size_t stat_clients_type_memory[CLIENT_TYPE_COUNT];/* Mem usage by type */
     size_t stat_cluster_links_memory; /* Mem usage by cluster links */
-    // long long stat_unexpected_error_replies; /* Number of unexpected (aof-loading, replica to master, etc.) error replies */
-    // long long stat_total_error_replies; /* Total number of issued error replies ( command + rejected errors ) */
-    // long long stat_dump_payload_sanitizations; /* Number deep dump payloads integrity validations. */
-    // long long stat_io_reads_processed; /* Number of read events processed by IO / Main threads */
-    // long long stat_io_writes_processed; /* Number of write events processed by IO / Main threads */
+    long long stat_unexpected_error_replies; /* Number of unexpected (aof-loading, replica to master, etc.) error replies */
+    long long stat_total_error_replies; /* Total number of issued error replies ( command + rejected errors ) */
+    long long stat_dump_payload_sanitizations; /* Number deep dump payloads integrity validations. */
+    long long stat_io_reads_processed; /* Number of read events processed by IO / Main threads */
+    long long stat_io_writes_processed; /* Number of write events processed by IO / Main threads */
     redisAtomic long long stat_total_reads_processed; /* Total number of read events processed */
-    // redisAtomic long long stat_total_writes_processed; /* Total number of write events processed */
+    redisAtomic long long stat_total_writes_processed; /* Total number of write events processed */
     // /* The following two are used to track instantaneous metrics, like
     //  * number of operations per second, network traffic. */
     // struct {
@@ -967,7 +1014,7 @@ struct redisServer {
     int daemonize;                  /* True if running as a daemon */
     int set_proc_title;             /* True if change proc title */
     char *proc_title_template;      /* Process title template format */
-    // clientBufferLimitsConfig client_obuf_limits[CLIENT_TYPE_OBUF_COUNT];
+    clientBufferLimitsConfig client_obuf_limits[CLIENT_TYPE_OBUF_COUNT];
     int pause_cron;                 /* Don't run cron tasks (debug) */
     int latency_tracking_enabled;   /* 1 if extended latency tracking is enabled, 0 otherwise. */
     double *latency_tracking_info_percentiles; /* Extended latency tracking info output percentile list configuration. */
@@ -1072,8 +1119,8 @@ struct redisServer {
     // long long second_replid_offset; /* Accept offsets up to this for replid2. */
     // int slaveseldb;                 /* Last SELECTed DB in replication output */
     int repl_ping_slave_period;     /* Master pings the slave every N seconds */
-    // replBacklog *repl_backlog;      /* Replication backlog for partial syncs */
-    // long long repl_backlog_size;    /* Backlog circular buffer size */
+    replBacklog *repl_backlog;      /* Replication backlog for partial syncs */
+    long long repl_backlog_size;    /* Backlog circular buffer size */
     // time_t repl_backlog_time_limit; /* Time without slaves after the backlog
     //                                    gets released. */
     // time_t repl_no_slaves_since;    /* We have no slaves since that time.
@@ -1088,7 +1135,7 @@ struct redisServer {
     // int repl_diskless_sync_max_replicas;/* Max replicas for diskless repl BGSAVE
     //                                      * delay (start sooner if they all connect). */
     // size_t repl_buffer_mem;         /* The memory of replication buffer. */
-    // list *repl_buffer_blocks;       /* Replication buffers blocks list
+    list *repl_buffer_blocks;       /* Replication buffers blocks list
     //                                  * (serving replica clients and repl backlog) */
     // /* Replication (slave) */
     // char *masteruser;               /* AUTH with this user and masterauth with master */
@@ -1108,7 +1155,7 @@ struct redisServer {
     // char *repl_transfer_tmpfile; /* Slave-> master SYNC temp file name */
     // time_t repl_transfer_lastio; /* Unix time of the latest read, for timeout */
     // int repl_serve_stale_data; /* Serve stale data when link is down? */
-    // int repl_slave_ro;          /* Slave is read only? */
+    int repl_slave_ro;          /* Slave is read only? */
     // int repl_slave_ignore_maxmemory;    /* If true slaves do not evict. */
     time_t repl_down_since; /* Unix time at which link with master went down */
     // int repl_disable_tcp_nodelay;   /* Disable TCP_NODELAY after SYNC? */
@@ -1116,7 +1163,7 @@ struct redisServer {
     // int replica_announced;          /* If true, replica is announced by Sentinel */
     // int slave_announce_port;        /* Give the master this listening port. */
     // char *slave_announce_ip;        /* Give the master this ip address. */
-    // int propagation_error_behavior; /* Configures the behavior of the replica
+    int propagation_error_behavior; /* Configures the behavior of the replica
     //                                  * when it receives an error on the replication stream */
     // int repl_ignore_disk_write_error;   /* Configures whether replicas panic when unable to
     //                                      * persist writes to AOF. */
@@ -1320,6 +1367,15 @@ struct saveparam {
     int changes;
 };
 
+/* afterErrorReply flags */
+#define ERR_REPLY_FLAG_NO_STATS_UPDATE (1ULL<<0) /* Indicating that we should not update
+                                                    error stats after sending error reply */
+
+#define CLIENT_ID_AOF (UINT64_MAX) /* Reserved ID for the AOF client. If you
+                                      need more reserved IDs use UINT64_MAX-1,
+                                      -2, ... and so forth. */
+
+
 /* Actions pause types */
 #define PAUSE_ACTION_CLIENT_WRITE     (1<<0)
 #define PAUSE_ACTION_CLIENT_ALL       (1<<1) /* must be bigger than PAUSE_ACTION_CLIENT_WRITE */
@@ -1428,15 +1484,7 @@ typedef struct clientReplyBlock {
 } clientReplyBlock;
 
 
-typedef struct {
-    sds name;       /* The username as an SDS string. */
-    uint32_t flags; /* See USER_FLAG_* */
-    list *passwords; /* A list of SDS valid passwords for this user. */
-    list *selectors; /* A list of selectors this user validates commands
-                        against. This list will always contain at least
-                        one selector for backwards compatibility. */
-    robj *acl_string; /* cached string represent of ACLs */
-} user;
+
 
 /* In Redis objects 'robj' structures of type OBJ_MODULE, the value pointer
  * is set to the following structure, referencing the moduleType structure
@@ -1520,6 +1568,27 @@ extern int io_threads_op;
 #define SLAVE_CAPA_EOF (1<<0)    /* Can parse the RDB EOF streaming format. */
 #define SLAVE_CAPA_PSYNC2 (1<<1) /* Supports PSYNC2 protocol. */
 
+/* State of slaves from the POV of the master. Used in client->replstate.
+ * In SEND_BULK and ONLINE state the slave receives new updates
+ * in its output queue. In the WAIT_BGSAVE states instead the server is waiting
+ * to start the next background saving in order to send updates to it. */
+#define SLAVE_STATE_WAIT_BGSAVE_START 6 /* We need to produce a new RDB file. */
+#define SLAVE_STATE_WAIT_BGSAVE_END 7 /* Waiting RDB file creation to finish. */
+#define SLAVE_STATE_SEND_BULK 8 /* Sending RDB file to slave. */
+#define SLAVE_STATE_ONLINE 9 /* RDB file transmitted, sending just updates. */
+#define SLAVE_STATE_RDB_TRANSMITTED 10 /* RDB file transmitted - This state is used only for
+                                        * a replica that only wants RDB without replication buffer  */
+
+
+/* Similar with 'clientReplyBlock', it is used for shared buffers between
+ * all replica clients and replication backlog. */
+typedef struct replBufBlock {
+    int refcount;           /* Number of replicas or repl backlog using. */
+    long long id;           /* The unique incremental number. */
+    long long repl_offset;  /* Start replication offset of the block. */
+    size_t size, used;
+    char buf[];
+} replBufBlock;
 
 typedef enum {
     BOOL_CONFIG,
@@ -1551,6 +1620,7 @@ void sigsegvHandler(int sig, siginfo_t *info, void *secret);
 
 mstime_t mstime(void);
 long long ustime(void);
+sds catClientInfoString(sds s, client *client);
 
 /* Synchronous I/O with timeout */
 ssize_t syncWrite(int fd, char *ptr, ssize_t size, long long timeout);
@@ -1570,6 +1640,21 @@ int islocalClient(client *c);
 void disableTracking(client *c);
 
 void readQueryFromClient(connection *conn);
+
+
+void addReplyErrorArity(client *c);
+
+/* Commands prototypes */
+void addReply(client *c, robj *obj);
+void authCommand(client *c);
+void pingCommand(client *c);
+
+void incrementErrorCount(const char *fullerr, size_t namelen);
+// void showLatestBacklog(void);
+size_t stringObjectLen(robj *o);
+size_t getClientMemoryUsage(client *c, size_t *output_buffer_mem_usage);
+
+
 
 
 

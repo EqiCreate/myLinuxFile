@@ -1388,6 +1388,15 @@ void initServer(void) {
 
 
 # pragma region
+void incrementErrorCount(const char *fullerr, size_t namelen) {
+    // struct redisError *error = raxFind(server.errors,(unsigned char*)fullerr,namelen);
+    // if (error == raxNotFound) {
+    //     error = zmalloc(sizeof(*error));
+    //     error->count = 0;
+    //     raxInsert(server.errors,(unsigned char*)fullerr,namelen,error,NULL);
+    // }
+    // error->count++; //debug michael
+}
 
 /* Return the UNIX time in microseconds */
 long long ustime(void) {
@@ -1403,7 +1412,32 @@ long long ustime(void) {
 mstime_t mstime(void) {
     return ustime()/1000;
 }
+
+/* The PING command. It works in a different way if the client is in
+ * in Pub/Sub mode. */
+void pingCommand(client *c) {
+    /* The command takes zero or one arguments. */
+    if (c->argc > 2) {
+        addReplyErrorArity(c);
+        return;
+    }
+
+    if (c->flags & CLIENT_PUBSUB && c->resp == 2) {
+        addReply(c,shared.mbulkhdr[2]);
+        addReplyBulkCBuffer(c,"pong",4);
+        if (c->argc == 1)
+            addReplyBulkCBuffer(c,"",0);
+        else
+            addReplyBulk(c,c->argv[1]);
+    } else {
+        if (c->argc == 1)
+            addReply(c,shared.pong);
+        else
+            addReplyBulk(c,c->argv[1]);
+    }
+}
 # pragma endregion
+
 int main(int argc, char **argv)
 {
     struct timeval tv;

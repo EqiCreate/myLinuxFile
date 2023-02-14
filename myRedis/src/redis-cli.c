@@ -78,6 +78,17 @@
 #define CLUSTER_MANAGER_LOG_LVL_ERR     3
 #define CLUSTER_MANAGER_LOG_LVL_SUCCESS 4
 
+#define CLUSTER_MANAGER_SLOTS               16384
+#define CLUSTER_MANAGER_PORT_INCR           10000 /* same as CLUSTER_PORT_INCR */
+#define CLUSTER_MANAGER_MIGRATE_TIMEOUT     60000
+#define CLUSTER_MANAGER_MIGRATE_PIPELINE    10
+#define CLUSTER_MANAGER_REBALANCE_THRESHOLD 2
+
+#define CLUSTER_MANAGER_INVALID_HOST_ARG \
+    "[ERR] Invalid arguments: you need to pass either a valid " \
+    "address (ie. 120.0.0.1:7000) or space separated IP " \
+    "and port (ie. 120.0.0.1 7000)\n"
+
 #define CLUSTER_JOIN_CHECK_AFTER        20
 
 #define LOG_COLOR_BOLD      "29;1m"
@@ -770,6 +781,7 @@ static int parseOptions(int argc, char **argv) {
 
     return i;
 }
+
 static void parseEnv() {
     /* Set auth from env, but do not overwrite CLI arguments if passed */
     char *auth = getenv(REDIS_CLI_AUTH_ENV);
@@ -782,6 +794,7 @@ static void parseEnv() {
         config.cluster_manager_command.flags |= CLUSTER_MANAGER_CMD_FLAG_YES;
     }
 }
+
 static void sigIntHandler(int s) {
     UNUSED(s);
 
@@ -898,8 +911,6 @@ static int isInvalidateReply(redisReply *reply) {
         !strncmp(reply->element[0]->str, "invalidate", 10) &&
         reply->element[1]->type == REDIS_REPLY_ARRAY;
 }
-
-
 
 /* Special display handler for RESP3 'invalidate' messages.
  * This function does not validate the reply, so it should
@@ -2051,8 +2062,6 @@ static void cliOutputHelp(int argc, char **argv) {
     printf("\r\n");
 }
 
-
-
 static int cliSendCommand(int argc, char **argv, long repeat) {
     char *command = argv[0];
     size_t *argvlen;
@@ -2429,10 +2438,77 @@ static void repl(void) {
 }
 
 int main(int argc, char **argv) {
-     printf("start client %d",argc);
-      int firstarg;
+    printf("start client %d",argc);
+    int firstarg;
     struct timeval tv;
     memset(&config.sslconfig, 0, sizeof(config.sslconfig));
+    config.conn_info.hostip = sdsnew("127.0.0.1");
+    config.conn_info.hostport = 6379;
+    config.hostsocket = NULL;
+    config.repeat = 1;
+    config.interval = 0;
+    config.dbnum = 0;
+    config.conn_info.input_dbnum = 0;
+    config.interactive = 0;
+    config.shutdown = 0;
+    config.monitor_mode = 0;
+    config.pubsub_mode = 0;
+    config.blocking_state_aborted = 0;
+    config.latency_mode = 0;
+    config.latency_dist_mode = 0;
+    config.latency_history = 0;
+    config.lru_test_mode = 0;
+    config.lru_test_sample_size = 0;
+    config.cluster_mode = 0;
+    config.cluster_send_asking = 0;
+    config.slave_mode = 0;
+    config.getrdb_mode = 0;
+    config.get_functions_rdb_mode = 0;
+    config.stat_mode = 0;
+    config.scan_mode = 0;
+    config.intrinsic_latency_mode = 0;
+    config.pattern = NULL;
+    config.rdb_filename = NULL;
+    config.pipe_mode = 0;
+    config.pipe_timeout = REDIS_CLI_DEFAULT_PIPE_TIMEOUT;
+    config.bigkeys = 0;
+    config.hotkeys = 0;
+    config.stdin_lastarg = 0;
+    config.stdin_tag_arg = 0;
+    config.stdin_tag_name = NULL;
+    config.conn_info.auth = NULL;
+    config.askpass = 0;
+    config.conn_info.user = NULL;
+    config.eval = NULL;
+    config.eval_ldb = 0;
+    config.eval_ldb_end = 0;
+    config.eval_ldb_sync = 0;
+    config.enable_ldb_on_eval = 0;
+    config.last_cmd_type = -1;
+    config.verbose = 0;
+    config.set_errcode = 0;
+    config.no_auth_warning = 0;
+    config.in_multi = 0;
+    config.cluster_manager_command.name = NULL;
+    config.cluster_manager_command.argc = 0;
+    config.cluster_manager_command.argv = NULL;
+    config.cluster_manager_command.stdin_arg = NULL;
+    config.cluster_manager_command.flags = 0;
+    config.cluster_manager_command.replicas = 0;
+    config.cluster_manager_command.from = NULL;
+    config.cluster_manager_command.to = NULL;
+    config.cluster_manager_command.from_user = NULL;
+    config.cluster_manager_command.from_pass = NULL;
+    config.cluster_manager_command.from_askpass = 0;
+    config.cluster_manager_command.weight = NULL;
+    config.cluster_manager_command.weight_argc = 0;
+    config.cluster_manager_command.slots = 0;
+    config.cluster_manager_command.timeout = CLUSTER_MANAGER_MIGRATE_TIMEOUT;
+    config.cluster_manager_command.pipeline = CLUSTER_MANAGER_MIGRATE_PIPELINE;
+    config.cluster_manager_command.threshold =
+        CLUSTER_MANAGER_REBALANCE_THRESHOLD;
+    config.cluster_manager_command.backup_dir = NULL;
+
     pref.hints = 1;
 
     firstarg = parseOptions(argc,argv);
