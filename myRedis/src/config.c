@@ -162,14 +162,14 @@ typedef struct deprecatedConfig {
 // };
 
 // /* Output buffer limits presets. */
-// clientBufferLimitsConfig clientBufferLimitsDefaults[CLIENT_TYPE_OBUF_COUNT] = {
-//     {0, 0, 0}, /* normal */
-//     {1024*1024*256, 1024*1024*64, 60}, /* slave */
-//     {1024*1024*32, 1024*1024*8, 60}  /* pubsub */
-// };
+clientBufferLimitsConfig clientBufferLimitsDefaults[CLIENT_TYPE_OBUF_COUNT] = {
+    {0, 0, 0}, /* normal */
+    {1024*1024*256, 1024*1024*64, 60}, /* slave */
+    {1024*1024*32, 1024*1024*8, 60}  /* pubsub */
+};
 
 /* OOM Score defaults */
-// int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT] = { 0, 200, 800 };
+int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT] = { 0, 200, 800 };
 
 // /* Generic config infrastructure function pointers
 //  * int is_valid_fn(val, err)
@@ -360,11 +360,11 @@ static standardConfig *lookupConfig(sds name) {
 //     server.saveparamslen++;
 // }
 
-// void resetServerSaveParams(void) {
-//     zfree(server.saveparams);
-//     server.saveparams = NULL;
-//     server.saveparamslen = 0;
-// }
+void resetServerSaveParams(void) {
+    zfree(server.saveparams);
+    server.saveparams = NULL;
+    server.saveparamslen = 0;
+}
 
 // void queueLoadModule(sds path, sds *argv, int argc) {
 //     int i;

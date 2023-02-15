@@ -38,6 +38,8 @@
 // #include "functions.h"
 extern int ProcessingEventsWhileBlocked;
 
+extern struct redisCommand redisCommandTable[];
+
 struct sharedObjectsStruct shared;
 struct redisCommand *lookupSubcommand(struct redisCommand *container, sds sub_name) {
     return dictFetchValue(container->subcommands_dict, sub_name);
@@ -92,6 +94,303 @@ struct redisCommand *lookupCommandBySds(sds s) {
     return lookupCommandBySdsLogic(server.commands,s);
 }
 
+
+
+uint64_t dictSdsHash(const void *key) {
+    return dictGenHashFunction((unsigned char*)key, sdslen((char*)key));
+}
+void dictSdsDestructor(dict *d, void *val)
+{
+    UNUSED(d);
+    sdsfree(val);
+}
+/* A case insensitive version used for the command lookup table and other
+ * places where case insensitive non binary-safe comparison is needed. */
+int dictSdsKeyCaseCompare(dict *d, const void *key1,
+        const void *key2)
+{
+    UNUSED(d);
+    return strcasecmp(key1, key2) == 0;
+}
+
+void dictObjectDestructor(dict *d, void *val)
+{
+    UNUSED(d);
+    if (val == NULL) return; /* Lazy freeing will set value to NULL. */
+    decrRefCount(val);
+}
+
+/* Command table. sds string -> command struct pointer. */
+dictType commandTableDictType = {
+    dictSdsCaseHash,            /* hash function */
+    NULL,                       /* key dup */
+    NULL,                       /* val dup */
+    dictSdsKeyCaseCompare,      /* key compare */
+    dictSdsDestructor,          /* key destructor */
+    NULL,                       /* val destructor */
+    NULL                        /* allow to expand */
+};
+
+/* Migrate cache dict type. */
+dictType migrateCacheDictType = {
+    dictSdsHash,                /* hash function */
+    NULL,                       /* key dup */
+    NULL,                       /* val dup */
+    dictSdsKeyCompare,          /* key compare */
+    dictSdsDestructor,          /* key destructor */
+    NULL,                       /* val destructor */
+    NULL                        /* allow to expand */
+};
+
+sds catSubCommandFullname(const char *parent_name, const char *sub_name) {
+    return sdscatfmt(sdsempty(), "%s|%s", parent_name, sub_name);
+}
+/* Set implicit ACl categories (see comment above the definition of
+ * struct redisCommand). */
+void setImplicitACLCategories(struct redisCommand *c) {
+    if (c->flags & CMD_WRITE)
+        c->acl_categories |= ACL_CATEGORY_WRITE;
+    /* Exclude scripting commands from the RO category. */
+    if (c->flags & CMD_READONLY && !(c->acl_categories & ACL_CATEGORY_SCRIPTING))
+        c->acl_categories |= ACL_CATEGORY_READ;
+    if (c->flags & CMD_ADMIN)
+        c->acl_categories |= ACL_CATEGORY_ADMIN|ACL_CATEGORY_DANGEROUS;
+    if (c->flags & CMD_PUBSUB)
+        c->acl_categories |= ACL_CATEGORY_PUBSUB;
+    if (c->flags & CMD_FAST)
+        c->acl_categories |= ACL_CATEGORY_FAST;
+    if (c->flags & CMD_BLOCKING)
+        c->acl_categories |= ACL_CATEGORY_BLOCKING;
+
+    /* If it's not @fast is @slow in this binary world. */
+    if (!(c->acl_categories & ACL_CATEGORY_FAST))
+        c->acl_categories |= ACL_CATEGORY_SLOW;
+}
+
+/* Recursively populate the args structure (setting num_args to the number of
+ * subargs) and return the number of args. */
+int populateArgsStructure(struct redisCommandArg *args) {
+    if (!args)
+        return 0;
+    int count = 0;
+    while (args->name) {
+        serverAssert(count < INT_MAX);
+        args->num_args = populateArgsStructure(args->subargs);
+        count++;
+        args++;
+    }
+    return count;
+}
+
+/* Recursively populate the command structure.
+ *
+ * On success, the function return C_OK. Otherwise C_ERR is returned and we won't
+ * add this command in the commands dict. */
+int populateCommandStructure(struct redisCommand *c) {
+    /* If the command marks with CMD_SENTINEL, it exists in sentinel. */
+    if (!(c->flags & CMD_SENTINEL) && server.sentinel_mode)
+        return C_ERR;
+
+    /* If the command marks with CMD_ONLY_SENTINEL, it only exists in sentinel. */
+    if (c->flags & CMD_ONLY_SENTINEL && !server.sentinel_mode)
+        return C_ERR;
+
+    /* Translate the command string flags description into an actual
+     * set of flags. */
+    setImplicitACLCategories(c);
+
+    /* Redis commands don't need more args than STATIC_KEY_SPECS_NUM (Number of keys
+     * specs can be greater than STATIC_KEY_SPECS_NUM only for module commands) */
+    c->key_specs = c->key_specs_static;
+    c->key_specs_max = STATIC_KEY_SPECS_NUM;
+
+    /* We start with an unallocated histogram and only allocate memory when a command
+     * has been issued for the first time */
+    c->latency_histogram = NULL;
+
+    for (int i = 0; i < STATIC_KEY_SPECS_NUM; i++) {
+        if (c->key_specs[i].begin_search_type == KSPEC_BS_INVALID)
+            break;
+        c->key_specs_num++;
+    }
+
+    /* Count things so we don't have to use deferred reply in COMMAND reply. */
+    while (c->history && c->history[c->num_history].since)
+        c->num_history++;
+    while (c->tips && c->tips[c->num_tips])
+        c->num_tips++;
+    c->num_args = populateArgsStructure(c->args);
+
+    /* Handle the legacy range spec and the "movablekeys" flag (must be done after populating all key specs). */
+    populateCommandLegacyRangeSpec(c);
+
+    /* Assign the ID used for ACL. */
+    c->id = ACLGetCommandID(c->fullname);
+
+    /* Handle subcommands */
+    if (c->subcommands) {
+        for (int j = 0; c->subcommands[j].declared_name; j++) {
+            struct redisCommand *sub = c->subcommands+j;
+
+            sub->fullname = catSubCommandFullname(c->declared_name, sub->declared_name);
+            if (populateCommandStructure(sub) == C_ERR)
+                continue;
+
+            commandAddSubcommand(c, sub, sub->declared_name);
+        }
+    }
+
+    return C_OK;
+}
+
+
+void commandAddSubcommand(struct redisCommand *parent, struct redisCommand *subcommand, const char *declared_name) {
+    if (!parent->subcommands_dict)
+        parent->subcommands_dict = dictCreate(&commandTableDictType);
+
+    subcommand->parent = parent; /* Assign the parent command */
+    subcommand->id = ACLGetCommandID(subcommand->fullname); /* Assign the ID used for ACL. */
+
+    serverAssert(dictAdd(parent->subcommands_dict, sdsnew(declared_name), subcommand) == DICT_OK);
+}
+
+/* The purpose of this function is to try to "glue" consecutive range
+ * key specs in order to build the legacy (first,last,step) spec
+ * used by the COMMAND command.
+ * By far the most common case is just one range spec (e.g. SET)
+ * but some commands' ranges were split into two or more ranges
+ * in order to have different flags for different keys (e.g. SMOVE,
+ * first key is "RW ACCESS DELETE", second key is "RW INSERT").
+ *
+ * Additionally set the CMD_MOVABLE_KEYS flag for commands that may have key
+ * names in their arguments, but the legacy range spec doesn't cover all of them.
+ *
+ * This function uses very basic heuristics and is "best effort":
+ * 1. Only commands which have only "range" specs are considered.
+ * 2. Only range specs with keystep of 1 are considered.
+ * 3. The order of the range specs must be ascending (i.e.
+ *    lastkey of spec[i] == firstkey-1 of spec[i+1]).
+ *
+ * This function will succeed on all native Redis commands and may
+ * fail on module commands, even if it only has "range" specs that
+ * could actually be "glued", in the following cases:
+ * 1. The order of "range" specs is not ascending (e.g. the spec for
+ *    the key at index 2 was added before the spec of the key at
+ *    index 1).
+ * 2. The "range" specs have keystep >1.
+ *
+ * If this functions fails it means that the legacy (first,last,step)
+ * spec used by COMMAND will show 0,0,0. This is not a dire situation
+ * because anyway the legacy (first,last,step) spec is to be deprecated
+ * and one should use the new key specs scheme.
+ */
+void populateCommandLegacyRangeSpec(struct redisCommand *c) {
+    memset(&c->legacy_range_key_spec, 0, sizeof(c->legacy_range_key_spec));
+
+    /* Set the movablekeys flag if we have a GETKEYS flag for modules.
+     * Note that for native redis commands, we always have keyspecs,
+     * with enough information to rely on for movablekeys. */
+    if (c->flags & CMD_MODULE_GETKEYS)
+        c->flags |= CMD_MOVABLE_KEYS;
+
+    /* no key-specs, no keys, exit. */
+    if (c->key_specs_num == 0) {
+        return;
+    }
+
+    if (c->key_specs_num == 1 &&
+        c->key_specs[0].begin_search_type == KSPEC_BS_INDEX &&
+        c->key_specs[0].find_keys_type == KSPEC_FK_RANGE)
+    {
+        /* Quick win, exactly one range spec. */
+        c->legacy_range_key_spec = c->key_specs[0];
+        /* If it has the incomplete flag, set the movablekeys flag on the command. */
+        if (c->key_specs[0].flags & CMD_KEY_INCOMPLETE)
+            c->flags |= CMD_MOVABLE_KEYS;
+        return;
+    }
+
+    int firstkey = INT_MAX, lastkey = 0;
+    int prev_lastkey = 0;
+    for (int i = 0; i < c->key_specs_num; i++) {
+        if (c->key_specs[i].begin_search_type != KSPEC_BS_INDEX ||
+            c->key_specs[i].find_keys_type != KSPEC_FK_RANGE)
+        {
+            /* Found an incompatible (non range) spec, skip it, and set the movablekeys flag. */
+            c->flags |= CMD_MOVABLE_KEYS;
+            continue;
+        }
+        if (c->key_specs[i].fk.range.keystep != 1 ||
+            (prev_lastkey && prev_lastkey != c->key_specs[i].bs.index.pos-1))
+        {
+            /* Found a range spec that's not plain (step of 1) or not consecutive to the previous one.
+             * Skip it, and we set the movablekeys flag. */
+            c->flags |= CMD_MOVABLE_KEYS;
+            continue;
+        }
+        if (c->key_specs[i].flags & CMD_KEY_INCOMPLETE) {
+            /* The spec we're using is incomplete, we can use it, but we also have to set the movablekeys flag. */
+            c->flags |= CMD_MOVABLE_KEYS;
+        }
+        firstkey = min(firstkey, c->key_specs[i].bs.index.pos);
+        /* Get the absolute index for lastkey (in the "range" spec, lastkey is relative to firstkey) */
+        int lastkey_abs_index = c->key_specs[i].fk.range.lastkey;
+        if (lastkey_abs_index >= 0)
+            lastkey_abs_index += c->key_specs[i].bs.index.pos;
+        /* For lastkey we use unsigned comparison to handle negative values correctly */
+        lastkey = max((unsigned)lastkey, (unsigned)lastkey_abs_index);
+        prev_lastkey = lastkey;
+    }
+
+    if (firstkey == INT_MAX) {
+        /* Couldn't find range specs, the legacy range spec will remain empty, and we set the movablekeys flag. */
+        c->flags |= CMD_MOVABLE_KEYS;
+        return;
+    }
+
+    serverAssert(firstkey != 0);
+    serverAssert(lastkey != 0);
+
+    c->legacy_range_key_spec.begin_search_type = KSPEC_BS_INDEX;
+    c->legacy_range_key_spec.bs.index.pos = firstkey;
+    c->legacy_range_key_spec.find_keys_type = KSPEC_FK_RANGE;
+    c->legacy_range_key_spec.fk.range.lastkey = lastkey < 0 ? lastkey : (lastkey-firstkey); /* in the "range" spec, lastkey is relative to firstkey */
+    c->legacy_range_key_spec.fk.range.keystep = 1;
+    c->legacy_range_key_spec.fk.range.limit = 0;
+}
+
+/* Populates the Redis Command Table dict from the static table in commands.c
+ * which is auto generated from the json files in the commands folder. */
+void populateCommandTable(void) {
+    int j;
+    struct redisCommand *c;
+
+    for (j = 0;; j++) {
+        c = redisCommandTable + j;
+        if (c->declared_name == NULL)
+            break;
+
+        int retval1, retval2;
+
+        c->fullname = sdsnew(c->declared_name);
+        if (populateCommandStructure(c) == C_ERR)
+            continue;
+
+        retval1 = dictAdd(server.commands, sdsdup(c->fullname), c);
+        /* Populate an additional dictionary that will be unaffected
+         * by rename-command statements in redis.conf. */
+        retval2 = dictAdd(server.orig_commands, sdsdup(c->fullname), c);
+        serverAssert(retval1 == DICT_OK && retval2 == DICT_OK);
+    }
+}
+
+
+/* Global vars that are actually used as constants. The following double
+ * values are used for double on-disk serialization, and are initialized
+ * at runtime to avoid strange compiler optimizations. */
+
+double R_Zero, R_PosInf, R_NegInf, R_Nan;
+
 /* Returns 1 if there is --sentinel among the arguments or if
  * executable name contains "redis-sentinel". */
 int checkForSentinelMode(int argc, char **argv, char *exec_name) {
@@ -123,13 +422,13 @@ void initServerConfig(void) {
     server.bindaddr_count = CONFIG_DEFAULT_BINDADDR_COUNT;
     for (j = 0; j < CONFIG_DEFAULT_BINDADDR_COUNT; j++)
         server.bindaddr[j] = zstrdup(default_bindaddr[j]);
-    // memset(server.listeners, 0x00, sizeof(server.listeners));
-    // server.active_expire_enabled = 1;
-    // server.skip_checksum_validation = 0;
-    // server.loading = 0;
-    // server.async_loading = 0;
+    memset(server.listeners, 0x00, sizeof(server.listeners));
+    server.active_expire_enabled = 1;
+    server.skip_checksum_validation = 0;
+    server.loading = 0;
+    server.async_loading = 0;
     // server.loading_rdb_used_mem = 0;
-    // server.aof_state = AOF_OFF;
+    server.aof_state = AOF_OFF;
     // server.aof_rewrite_base_size = 0;
     // server.aof_rewrite_scheduled = 0;
     // server.aof_flush_sleep = 0;
@@ -144,79 +443,79 @@ void initServerConfig(void) {
     // server.aof_selected_db = -1; /* Make sure the first time will not match */
     // server.aof_flush_postponed_start = 0;
     // server.aof_last_incr_size = 0;
-    // server.active_defrag_running = 0;
-    // server.notify_keyspace_events = 0;
-    // server.blocked_clients = 0;
-    // memset(server.blocked_clients_by_type,0,
-    //        sizeof(server.blocked_clients_by_type));
-    // server.shutdown_asap = 0;
-    // server.shutdown_flags = 0;
-    // server.shutdown_mstime = 0;
-    // server.cluster_module_flags = CLUSTER_MODULE_FLAG_NONE;
-    // server.migrate_cached_sockets = dictCreate(&migrateCacheDictType);
-    // server.next_client_id = 1; /* Client IDs, start from 1 .*/
-    // server.page_size = sysconf(_SC_PAGESIZE);
-    // server.pause_cron = 0;
+    server.active_defrag_running = 0;
+    server.notify_keyspace_events = 0;
+    server.blocked_clients = 0;
+    memset(server.blocked_clients_by_type,0,
+           sizeof(server.blocked_clients_by_type));
+    server.shutdown_asap = 0;
+    server.shutdown_flags = 0;
+    server.shutdown_mstime = 0;
+    server.cluster_module_flags = CLUSTER_MODULE_FLAG_NONE;
+    server.migrate_cached_sockets = dictCreate(&migrateCacheDictType);
+    server.next_client_id = 1; /* Client IDs, start from 1 .*/
+    server.page_size = sysconf(_SC_PAGESIZE);
+    server.pause_cron = 0;
 
-    // server.latency_tracking_info_percentiles_len = 3;
-    // server.latency_tracking_info_percentiles = zmalloc(sizeof(double)*(server.latency_tracking_info_percentiles_len));
-    // server.latency_tracking_info_percentiles[0] = 50.0;  /* p50 */
-    // server.latency_tracking_info_percentiles[1] = 99.0;  /* p99 */
-    // server.latency_tracking_info_percentiles[2] = 99.9;  /* p999 */
+    server.latency_tracking_info_percentiles_len = 3;
+    server.latency_tracking_info_percentiles = zmalloc(sizeof(double)*(server.latency_tracking_info_percentiles_len));
+    server.latency_tracking_info_percentiles[0] = 50.0;  /* p50 */
+    server.latency_tracking_info_percentiles[1] = 99.0;  /* p99 */
+    server.latency_tracking_info_percentiles[2] = 99.9;  /* p999 */
 
     // unsigned int lruclock = getLRUClock();
     // atomicSet(server.lruclock,lruclock);
-    // resetServerSaveParams();
+    resetServerSaveParams();
 
     // appendServerSaveParams(60*60,1);  /* save after 1 hour and 1 change */
     // appendServerSaveParams(300,100);  /* save after 5 minutes and 100 changes */
     // appendServerSaveParams(60,10000); /* save after 1 minute and 10000 changes */
 
     // /* Replication related */
-    // server.masterhost = NULL;
-    // server.masterport = 6379;
-    // server.master = NULL;
-    // server.cached_master = NULL;
-    // server.master_initial_offset = -1;
-    // server.repl_state = REPL_STATE_NONE;
-    // server.repl_transfer_tmpfile = NULL;
-    // server.repl_transfer_fd = -1;
-    // server.repl_transfer_s = NULL;
-    // server.repl_syncio_timeout = CONFIG_REPL_SYNCIO_TIMEOUT;
-    // server.repl_down_since = 0; /* Never connected, repl is down since EVER. */
-    // server.master_repl_offset = 0;
+    server.masterhost = NULL;
+    server.masterport = 6379;
+    server.master = NULL;
+    server.cached_master = NULL;
+    server.master_initial_offset = -1;
+    server.repl_state = REPL_STATE_NONE;
+    server.repl_transfer_tmpfile = NULL;
+    server.repl_transfer_fd = -1;
+    server.repl_transfer_s = NULL;
+    server.repl_syncio_timeout = CONFIG_REPL_SYNCIO_TIMEOUT;
+    server.repl_down_since = 0; /* Never connected, repl is down since EVER. */
+    server.master_repl_offset = 0;
 
     // /* Replication partial resync backlog */
-    // server.repl_backlog = NULL;
-    // server.repl_no_slaves_since = time(NULL);
+    server.repl_backlog = NULL;
+    server.repl_no_slaves_since = time(NULL);
 
     // /* Failover related */
-    // server.failover_end_time = 0;
-    // server.force_failover = 0;
-    // server.target_replica_host = NULL;
-    // server.target_replica_port = 0;
-    // server.failover_state = NO_FAILOVER;
+    server.failover_end_time = 0;
+    server.force_failover = 0;
+    server.target_replica_host = NULL;
+    server.target_replica_port = 0;
+    server.failover_state = NO_FAILOVER;
 
     // /* Client output buffer limits */
-    // for (j = 0; j < CLIENT_TYPE_OBUF_COUNT; j++)
-    //     server.client_obuf_limits[j] = clientBufferLimitsDefaults[j];
+    for (j = 0; j < CLIENT_TYPE_OBUF_COUNT; j++)
+        server.client_obuf_limits[j] = clientBufferLimitsDefaults[j];
 
     // /* Linux OOM Score config */
-    // for (j = 0; j < CONFIG_OOM_COUNT; j++)
-    //     server.oom_score_adj_values[j] = configOOMScoreAdjValuesDefaults[j];
+    for (j = 0; j < CONFIG_OOM_COUNT; j++)
+        server.oom_score_adj_values[j] = configOOMScoreAdjValuesDefaults[j];
 
     // /* Double constants initialization */
-    // R_Zero = 0.0;
-    // R_PosInf = 1.0/R_Zero;
-    // R_NegInf = -1.0/R_Zero;
-    // R_Nan = R_Zero/R_Zero;
+    R_Zero = 0.0;
+    R_PosInf = 1.0/R_Zero;
+    R_NegInf = -1.0/R_Zero;
+    R_Nan = R_Zero/R_Zero;
 
     // /* Command table -- we initialize it here as it is part of the
     //  * initial configuration, since command names may be changed via
     //  * redis.conf using the rename-command directive. */
-    // server.commands = dictCreate(&commandTableDictType);
-    // server.orig_commands = dictCreate(&commandTableDictType);
-    // populateCommandTable();
+    server.commands = dictCreate(&commandTableDictType);
+    server.orig_commands = dictCreate(&commandTableDictType);
+    populateCommandTable();
 
     // /* Debugging */
     // server.watchdog_period = 0;
@@ -241,13 +540,6 @@ int dictSdsKeyCompare(dict *d, const void *key1,
     l2 = sdslen((sds)key2);
     if (l1 != l2) return 0;
     return memcmp(key1, key2, l1) == 0;
-}
-
-void dictObjectDestructor(dict *d, void *val)
-{
-    UNUSED(d);
-    if (val == NULL) return; /* Lazy freeing will set value to NULL. */
-    decrRefCount(val);
 }
 
 /* This is a hash table type that uses the SDS dynamic strings library as

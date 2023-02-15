@@ -55,7 +55,7 @@ user *DefaultUser;  /* Global reference to the default user.
 
 // static rax *commandId = NULL; /* Command name to id mapping */
 
-// static unsigned long nextid = 0; /* Next command id that has not been assigned */
+static unsigned long nextid = 0; /* Next command id that has not been assigned */
 
 // struct ACLCategoryItem {
 //     const char *name;
@@ -1432,32 +1432,32 @@ void ACLInit(void) {
 //  *
 //  * The function does not take ownership of the 'cmdname' SDS string.
 //  * */
-// unsigned long ACLGetCommandID(sds cmdname) {
-//     sds lowername = sdsdup(cmdname);
-//     sdstolower(lowername);
-//     if (commandId == NULL) commandId = raxNew();
-//     void *id = raxFind(commandId,(unsigned char*)lowername,sdslen(lowername));
-//     if (id != raxNotFound) {
-//         sdsfree(lowername);
-//         return (unsigned long)id;
-//     }
-//     raxInsert(commandId,(unsigned char*)lowername,strlen(lowername),
-//               (void*)nextid,NULL);
-//     sdsfree(lowername);
-//     unsigned long thisid = nextid;
-//     nextid++;
+unsigned long ACLGetCommandID(sds cmdname) {
+    sds lowername = sdsdup(cmdname);
+    sdstolower(lowername);
+    // if (commandId == NULL) commandId = raxNew();
+    // void *id = raxFind(commandId,(unsigned char*)lowername,sdslen(lowername));
+    // if (id != raxNotFound) {
+    //     sdsfree(lowername);
+    //     return (unsigned long)id;
+    // }
+    // raxInsert(commandId,(unsigned char*)lowername,strlen(lowername),
+    //           (void*)nextid,NULL);
+    sdsfree(lowername);
+    unsigned long thisid = nextid;
+    nextid++;
 
-//     /* We never assign the last bit in the user commands bitmap structure,
-//      * this way we can later check if this bit is set, understanding if the
-//      * current ACL for the user was created starting with a +@all to add all
-//      * the possible commands and just subtracting other single commands or
-//      * categories, or if, instead, the ACL was created just adding commands
-//      * and command categories from scratch, not allowing future commands by
-//      * default (loaded via modules). This is useful when rewriting the ACLs
-//      * with ACL SAVE. */
-//     if (nextid == USER_COMMAND_BITS_COUNT-1) nextid++;
-//     return thisid;
-// }
+    /* We never assign the last bit in the user commands bitmap structure,
+     * this way we can later check if this bit is set, understanding if the
+     * current ACL for the user was created starting with a +@all to add all
+     * the possible commands and just subtracting other single commands or
+     * categories, or if, instead, the ACL was created just adding commands
+     * and command categories from scratch, not allowing future commands by
+     * default (loaded via modules). This is useful when rewriting the ACLs
+     * with ACL SAVE. */
+    if (nextid == USER_COMMAND_BITS_COUNT-1) nextid++;
+    return thisid;
+}
 
 // /* Clear command id table and reset nextid to 0. */
 // void ACLClearCommandID(void) {
