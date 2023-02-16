@@ -36,6 +36,22 @@
     - 出现后补救
       - 确认死锁:show engine innodb status;
       - kill process : use information_scheme; select * from processlist where db=xxx; kill xxx;
+    - example
+      ```sql
+      例子1->
+      transaCtion A:
+        START TRANSACTION;
+        SELECT * FROM t WHERE i = 1 LOCK IN SHARE MODE;//1. 获取共享锁
+        DELETE FROM t WHERE i = 1; //3. 死锁产生，因为此时事务B 想要排他X锁，等待A，而A 尝试升级为排他X锁排在事务A 后，等待A的释放.
+      
+      transaction B:
+        START TRANSACTION;
+        DELETE FROM t WHERE i = 1; //2. 这里事务B 将会被阻塞，因为尝试获取排他X 锁,然而共享锁在事务A
+
+      例子2 ->
+      不同表格之间操作的顺序相反导致
+
+      ```
     - ……
 - sql fn
   - year(xxx) : 获取某字段的年份
