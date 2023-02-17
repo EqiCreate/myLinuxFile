@@ -3,6 +3,8 @@
 + ## Sytem
     + systemctl status
     + systemctl [xxx] start|restart
+    + systemctl enable/disable [xxx] : to set up startup services|apps
+      + service --status-all : check service status
 + ## Application
 + ## Net
     + ``netstat -ntlp | grep 22``
