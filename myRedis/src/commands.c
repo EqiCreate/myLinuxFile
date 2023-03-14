@@ -6,6 +6,14 @@
  * the fantastic
  * Redis Command Table! */
 
+/********** CLIENT ********************/
+
+/* CLIENT history */
+#define CLIENT_History NULL
+
+/* CLIENT tips */
+#define CLIENT_tips NULL
+
 /********** PING ********************/
 
 /* PING history */
@@ -27,6 +35,7 @@ struct redisCommandArg PING_Args[] = {
 /* Main command table */
 struct redisCommand redisCommandTable[] = {
 /* connection */
+{"client","A container for client connection commands","Depends on subcommand.","2.4.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_CONNECTION,CLIENT_History,CLIENT_tips,NULL,-2,CMD_SENTINEL,0},
 {"ping","Ping the server","O(1)","1.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_CONNECTION,PING_History,PING_tips,pingCommand,-1,CMD_FAST|CMD_SENTINEL,ACL_CATEGORY_CONNECTION,.args=PING_Args},
 {0}
 };

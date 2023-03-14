@@ -1969,6 +1969,347 @@ int isInsideYieldingLongCommand() {
     return server.busy_module_yield_flags;
 }
 
+
+/* Increment the command failure counters (either rejected_calls or failed_calls).
+ * The decision which counter to increment is done using the flags argument, options are:
+ * * ERROR_COMMAND_REJECTED - update rejected_calls
+ * * ERROR_COMMAND_FAILED - update failed_calls
+ *
+ * The function also reset the prev_err_count to make sure we will not count the same error
+ * twice, its possible to pass a NULL cmd value to indicate that the error was counted elsewhere.
+ *
+ * The function returns true if stats was updated and false if not. */
+int incrCommandStatsOnError(struct redisCommand *cmd, int flags) {
+    /* hold the prev error count captured on the last command execution */
+    static long long prev_err_count = 0;
+    int res = 0;
+    if (cmd) {
+        if ((server.stat_total_error_replies - prev_err_count) > 0) {
+            if (flags & ERROR_COMMAND_REJECTED) {
+                cmd->rejected_calls++;
+                res = 1;
+            } else if (flags & ERROR_COMMAND_FAILED) {
+                cmd->failed_calls++;
+                res = 1;
+            }
+        }
+    }
+    prev_err_count = server.stat_total_error_replies;
+    return res;
+}
+
+/* Handle the alsoPropagate() API to handle commands that want to propagate
+ * multiple separated commands. Note that alsoPropagate() is not affected
+ * by CLIENT_PREVENT_PROP flag. */
+void propagatePendingCommands() {
+    // if (server.also_propagate.numops == 0)
+    //     return;
+
+    // int j;
+    // redisOp *rop;
+    // int multi_emitted = 0;
+
+    // /* Wrap the commands in server.also_propagate array,
+    //  * but don't wrap it if we are already in MULTI context,
+    //  * in case the nested MULTI/EXEC.
+    //  *
+    //  * And if the array contains only one command, no need to
+    //  * wrap it, since the single command is atomic. */
+    // if (server.also_propagate.numops > 1) {
+    //     /* We use dbid=-1 to indicate we do not want to replicate SELECT.
+    //      * It'll be inserted together with the next command (inside the MULTI) */
+    //     propagateNow(-1,&shared.multi,1,PROPAGATE_AOF|PROPAGATE_REPL);
+    //     multi_emitted = 1;
+    // }
+
+
+    // for (j = 0; j < server.also_propagate.numops; j++) {
+    //     rop = &server.also_propagate.ops[j];
+    //     serverAssert(rop->target);
+    //     propagateNow(rop->dbid,rop->argv,rop->argc,rop->target);
+    // }
+
+    // if (multi_emitted) {
+    //     /* We use dbid=-1 to indicate we do not want to replicate select */
+    //     propagateNow(-1,&shared.exec,1,PROPAGATE_AOF|PROPAGATE_REPL);
+    // }
+
+    // redisOpArrayFree(&server.also_propagate);
+}
+void afterCommand(client *c) {
+    UNUSED(c);
+    if (!server.in_nested_call) {
+        /* If we are at the top-most call() we can propagate what we accumulated.
+         * Should be done before trackingHandlePendingKeyInvalidations so that we
+         * reply to client before invalidating cache (makes more sense) */
+        if (server.core_propagates)
+            propagatePendingCommands();
+        /* Flush pending invalidation messages only when we are not in nested call.
+         * So the messages are not interleaved with transaction response. */
+        trackingHandlePendingKeyInvalidations();
+    }
+}
+
+static inline void updateCachedTimeWithUs(int update_daylight_info, const long long ustime) {
+    server.ustime = ustime;
+    server.mstime = server.ustime / 1000;
+    time_t unixtime = server.mstime / 1000;
+    atomicSet(server.unixtime, unixtime);
+
+    /* To get information about daylight saving time, we need to call
+     * localtime_r and cache the result. However calling localtime_r in this
+     * context is safe since we will never fork() while here, in the main
+     * thread. The logging function will call a thread safe version of
+     * localtime that has no locks. */
+    if (update_daylight_info) {
+        struct tm tm;
+        time_t ut = server.unixtime;
+        localtime_r(&ut,&tm);
+        server.daylight_active = tm.tm_isdst;
+    }
+}
+
+
+/* Call() is the core of Redis execution of a command.
+ *
+ * The following flags can be passed:
+ * CMD_CALL_NONE        No flags.
+ * CMD_CALL_SLOWLOG     Check command speed and log in the slow log if needed.
+ * CMD_CALL_STATS       Populate command stats.
+ * CMD_CALL_PROPAGATE_AOF   Append command to AOF if it modified the dataset
+ *                          or if the client flags are forcing propagation.
+ * CMD_CALL_PROPAGATE_REPL  Send command to slaves if it modified the dataset
+ *                          or if the client flags are forcing propagation.
+ * CMD_CALL_PROPAGATE   Alias for PROPAGATE_AOF|PROPAGATE_REPL.
+ * CMD_CALL_FULL        Alias for SLOWLOG|STATS|PROPAGATE.
+ *
+ * The exact propagation behavior depends on the client flags.
+ * Specifically:
+ *
+ * 1. If the client flags CLIENT_FORCE_AOF or CLIENT_FORCE_REPL are set
+ *    and assuming the corresponding CMD_CALL_PROPAGATE_AOF/REPL is set
+ *    in the call flags, then the command is propagated even if the
+ *    dataset was not affected by the command.
+ * 2. If the client flags CLIENT_PREVENT_REPL_PROP or CLIENT_PREVENT_AOF_PROP
+ *    are set, the propagation into AOF or to slaves is not performed even
+ *    if the command modified the dataset.
+ *
+ * Note that regardless of the client flags, if CMD_CALL_PROPAGATE_AOF
+ * or CMD_CALL_PROPAGATE_REPL are not set, then respectively AOF or
+ * slaves propagation will never occur.
+ *
+ * Client flags are modified by the implementation of a given command
+ * using the following API:
+ *
+ * forceCommandPropagation(client *c, int flags);
+ * preventCommandPropagation(client *c);
+ * preventCommandAOF(client *c);
+ * preventCommandReplication(client *c);
+ *
+ */
+void call(client *c, int flags) {
+    long long dirty;
+    uint64_t client_old_flags = c->flags;
+    struct redisCommand *real_cmd = c->realcmd;
+
+    /* Initialization: clear the flags that must be set by the command on
+     * demand, and initialize the array for additional commands propagation. */
+    c->flags &= ~(CLIENT_FORCE_AOF|CLIENT_FORCE_REPL|CLIENT_PREVENT_PROP);
+
+    /* Redis core is in charge of propagation when the first entry point
+     * of call() is processCommand().
+     * The only other option to get to call() without having processCommand
+     * as an entry point is if a module triggers RM_Call outside of call()
+     * context (for example, in a timer).
+     * In that case, the module is in charge of propagation.
+     *
+     * Because call() is re-entrant we have to cache and restore
+     * server.core_propagates. */
+    int prev_core_propagates = server.core_propagates;
+    if (!server.core_propagates && !(flags & CMD_CALL_FROM_MODULE))
+        server.core_propagates = 1;
+
+    /* Call the command. */
+    dirty = server.dirty;
+    incrCommandStatsOnError(NULL, 0);
+
+    const long long call_timer = ustime();
+
+    /* Update cache time, in case we have nested calls we want to
+     * update only on the first call*/
+    if (server.in_nested_call++ == 0) {
+        updateCachedTimeWithUs(0,call_timer);
+    }
+
+    monotime monotonic_start = 0;
+    if (monotonicGetType() == MONOTONIC_CLOCK_HW)
+        monotonic_start = getMonotonicUs();
+
+    c->cmd->proc(c);
+    server.in_nested_call--;
+
+    /* In order to avoid performance implication due to querying the clock using a system call 3 times,
+     * we use a monotonic clock, when we are sure its cost is very low, and fall back to non-monotonic call otherwise. */
+    ustime_t duration;
+    if (monotonicGetType() == MONOTONIC_CLOCK_HW)
+        duration = getMonotonicUs() - monotonic_start;
+    else
+        duration = ustime() - call_timer;
+
+    c->duration = duration;
+    dirty = server.dirty-dirty;
+    if (dirty < 0) dirty = 0;
+
+    /* Update failed command calls if required. */
+
+    if (!incrCommandStatsOnError(real_cmd, ERROR_COMMAND_FAILED) && c->deferred_reply_errors) {
+        /* When call is used from a module client, error stats, and total_error_replies
+         * isn't updated since these errors, if handled by the module, are internal,
+         * and not reflected to users. however, the commandstats does show these calls
+         * (made by RM_Call), so it should log if they failed or succeeded. */
+        real_cmd->failed_calls++;
+    }
+
+    /* After executing command, we will close the client after writing entire
+     * reply if it is set 'CLIENT_CLOSE_AFTER_COMMAND' flag. */
+    if (c->flags & CLIENT_CLOSE_AFTER_COMMAND) {
+        c->flags &= ~CLIENT_CLOSE_AFTER_COMMAND;
+        c->flags |= CLIENT_CLOSE_AFTER_REPLY;
+    }
+
+    /* When EVAL is called loading the AOF we don't want commands called
+     * from Lua to go into the slowlog or to populate statistics. */
+    if (server.loading && c->flags & CLIENT_SCRIPT)
+        flags &= ~(CMD_CALL_SLOWLOG | CMD_CALL_STATS);
+
+    /* If the caller is Lua, we want to force the EVAL caller to propagate
+     * the script if the command flag or client flag are forcing the
+     * propagation. */
+    if (c->flags & CLIENT_SCRIPT && server.script_caller) {
+        if (c->flags & CLIENT_FORCE_REPL)
+            server.script_caller->flags |= CLIENT_FORCE_REPL;
+        if (c->flags & CLIENT_FORCE_AOF)
+            server.script_caller->flags |= CLIENT_FORCE_AOF;
+    }
+
+    /* Note: the code below uses the real command that was executed
+     * c->cmd and c->lastcmd may be different, in case of MULTI-EXEC or
+     * re-written commands such as EXPIRE, GEOADD, etc. */
+
+    /* Record the latency this command induced on the main thread.
+     * unless instructed by the caller not to log. (happens when processing
+     * a MULTI-EXEC from inside an AOF). */
+    // if (flags & CMD_CALL_SLOWLOG) {
+    //     char *latency_event = (real_cmd->flags & CMD_FAST) ?
+    //                            "fast-command" : "command";
+    //     latencyAddSampleIfNeeded(latency_event,duration/1000);
+    // }//debug michael
+
+    /* Log the command into the Slow log if needed.
+     * If the client is blocked we will handle slowlog when it is unblocked. */
+    // if ((flags & CMD_CALL_SLOWLOG) && !(c->flags & CLIENT_BLOCKED))
+    //     slowlogPushCurrentCommand(c, real_cmd, duration);
+
+    /* Send the command to clients in MONITOR mode if applicable.
+     * Administrative commands are considered too dangerous to be shown. */
+    if (!(c->cmd->flags & (CMD_SKIP_MONITOR|CMD_ADMIN))) {
+        robj **argv = c->original_argv ? c->original_argv : c->argv;
+        int argc = c->original_argv ? c->original_argc : c->argc;
+        // replicationFeedMonitors(c,server.monitors,c->db->id,argv,argc);
+    }
+
+    /* Clear the original argv.
+     * If the client is blocked we will handle slowlog when it is unblocked. */
+    if (!(c->flags & CLIENT_BLOCKED))
+        freeClientOriginalArgv(c);
+
+    /* populate the per-command statistics that we show in INFO commandstats. */
+    if (flags & CMD_CALL_STATS) {
+        real_cmd->microseconds += duration;
+        real_cmd->calls++;
+        /* If the client is blocked we will handle latency stats when it is unblocked. */
+        // if (server.latency_tracking_enabled && !(c->flags & CLIENT_BLOCKED))
+        //     updateCommandLatencyHistogram(&(real_cmd->latency_histogram), duration*1000);
+    }
+
+    /* Propagate the command into the AOF and replication link.
+     * We never propagate EXEC explicitly, it will be implicitly
+     * propagated if needed (see propagatePendingCommands).
+     * Also, module commands take care of themselves */
+    // if (flags & CMD_CALL_PROPAGATE &&
+    //     (c->flags & CLIENT_PREVENT_PROP) != CLIENT_PREVENT_PROP &&
+    //     c->cmd->proc != execCommand &&
+    //     !(c->cmd->flags & CMD_MODULE))
+    // {
+    //     int propagate_flags = PROPAGATE_NONE;
+
+    //     /* Check if the command operated changes in the data set. If so
+    //      * set for replication / AOF propagation. */
+    //     if (dirty) propagate_flags |= (PROPAGATE_AOF|PROPAGATE_REPL);
+
+    //     /* If the client forced AOF / replication of the command, set
+    //      * the flags regardless of the command effects on the data set. */
+    //     if (c->flags & CLIENT_FORCE_REPL) propagate_flags |= PROPAGATE_REPL;
+    //     if (c->flags & CLIENT_FORCE_AOF) propagate_flags |= PROPAGATE_AOF;
+
+    //     /* However prevent AOF / replication propagation if the command
+    //      * implementation called preventCommandPropagation() or similar,
+    //      * or if we don't have the call() flags to do so. */
+    //     if (c->flags & CLIENT_PREVENT_REPL_PROP ||
+    //         !(flags & CMD_CALL_PROPAGATE_REPL))
+    //             propagate_flags &= ~PROPAGATE_REPL;
+    //     if (c->flags & CLIENT_PREVENT_AOF_PROP ||
+    //         !(flags & CMD_CALL_PROPAGATE_AOF))
+    //             propagate_flags &= ~PROPAGATE_AOF;
+
+    //     /* Call alsoPropagate() only if at least one of AOF / replication
+    //      * propagation is needed. */
+    //     if (propagate_flags != PROPAGATE_NONE)
+    //         alsoPropagate(c->db->id,c->argv,c->argc,propagate_flags);
+    // }
+
+    /* Restore the old replication flags, since call() can be executed
+     * recursively. */
+    c->flags &= ~(CLIENT_FORCE_AOF|CLIENT_FORCE_REPL|CLIENT_PREVENT_PROP);
+    c->flags |= client_old_flags &
+        (CLIENT_FORCE_AOF|CLIENT_FORCE_REPL|CLIENT_PREVENT_PROP);
+
+    /* If the client has keys tracking enabled for client side caching,
+     * make sure to remember the keys it fetched via this command. Scripting
+     * works a bit differently, where if the scripts executes any read command, it
+     * remembers all of the declared keys from the script. */
+    // if ((c->cmd->flags & CMD_READONLY) && (c->cmd->proc != evalRoCommand)
+    //     && (c->cmd->proc != evalShaRoCommand) && (c->cmd->proc != fcallroCommand))
+    // {
+    //     client *caller = (c->flags & CLIENT_SCRIPT && server.script_caller) ?
+    //                         server.script_caller : c;
+    //     if (caller->flags & CLIENT_TRACKING &&
+    //         !(caller->flags & CLIENT_TRACKING_BCAST))
+    //     {
+    //         trackingRememberKeys(caller);
+    //     }
+    // }
+
+    server.stat_numcommands++;
+
+    /* Record peak memory after each command and before the eviction that runs
+     * before the next command. */
+    size_t zmalloc_used = zmalloc_used_memory();
+    if (zmalloc_used > server.stat_peak_memory)
+        server.stat_peak_memory = zmalloc_used;
+
+    /* Do some maintenance job and cleanup */
+    afterCommand(c);
+
+    /* Client pause takes effect after a transaction has finished. This needs
+     * to be located after everything is propagated. */
+    if (!server.in_exec && server.client_pause_in_transaction) {
+        server.client_pause_in_transaction = 0;
+    }
+
+    server.core_propagates = prev_core_propagates;
+}
+
 void rejectCommandFormat(client *c, const char *fmt, ...) {
     va_list ap;
     va_start(ap,fmt);
@@ -2310,23 +2651,25 @@ int processCommand(client *c) {
     //     return C_OK;       
     // }
 
-    // /* Exec the command */
-    // if (c->flags & CLIENT_MULTI &&
-    //     c->cmd->proc != execCommand &&
-    //     c->cmd->proc != discardCommand &&
-    //     c->cmd->proc != multiCommand &&
-    //     c->cmd->proc != watchCommand &&
-    //     c->cmd->proc != quitCommand &&
-    //     c->cmd->proc != resetCommand)
-    // {
-    //     queueMultiCommand(c, cmd_flags);
-    //     addReply(c,shared.queued);
-    // } else {
-    //     call(c,CMD_CALL_FULL);
-    //     c->woff = server.master_repl_offset;
-    //     if (listLength(server.ready_keys))
-    //         handleClientsBlockedOnKeys();
-    // }
+    /* Exec the command */
+    if (c->flags & CLIENT_MULTI
+        //  &&
+        // c->cmd->proc != execCommand &&
+        // c->cmd->proc != discardCommand &&
+        // c->cmd->proc != multiCommand &&
+        // c->cmd->proc != watchCommand &&
+        // c->cmd->proc != quitCommand &&
+        // c->cmd->proc != resetCommand
+        )
+    {
+        // queueMultiCommand(c, cmd_flags);
+        addReply(c,shared.queued);
+    } else {
+        call(c,CMD_CALL_FULL);
+        c->woff = server.master_repl_offset;
+        // if (listLength(server.ready_keys))
+        //     handleClientsBlockedOnKeys();
+    }
 
     return C_OK;
 }
@@ -2389,24 +2732,6 @@ void pingCommand(client *c) {
     }
 }
 
-static inline void updateCachedTimeWithUs(int update_daylight_info, const long long ustime) {
-    server.ustime = ustime;
-    server.mstime = server.ustime / 1000;
-    time_t unixtime = server.mstime / 1000;
-    atomicSet(server.unixtime, unixtime);
-
-    /* To get information about daylight saving time, we need to call
-     * localtime_r and cache the result. However calling localtime_r in this
-     * context is safe since we will never fork() while here, in the main
-     * thread. The logging function will call a thread safe version of
-     * localtime that has no locks. */
-    if (update_daylight_info) {
-        struct tm tm;
-        time_t ut = server.unixtime;
-        localtime_r(&ut,&tm);
-        server.daylight_active = tm.tm_isdst;
-    }
-}
 
 /* This function fills in the role of serverCron during RDB or AOF loading, and
  * also during blocked scripts.

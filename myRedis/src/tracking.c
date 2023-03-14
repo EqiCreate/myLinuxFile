@@ -412,29 +412,29 @@ void disableTracking(client *c) {
 //     raxRemove(TrackingTable,(unsigned char*)key,keylen,NULL);
 // }
 
-// void trackingHandlePendingKeyInvalidations(void) {
-//     if (!listLength(server.tracking_pending_keys)) return;
+void trackingHandlePendingKeyInvalidations(void) {
+    // if (!listLength(server.tracking_pending_keys)) return;
 
-//     listNode *ln;
-//     listIter li;
+    // listNode *ln;
+    // listIter li;
 
-//     listRewind(server.tracking_pending_keys,&li);
-//     while ((ln = listNext(&li)) != NULL) {
-//         robj *key = listNodeValue(ln);
-//         /* current_client maybe freed, so we need to send invalidation
-//          * message only when current_client is still alive */
-//         if (server.current_client != NULL) {
-//             if (key != NULL) {
-//                 sendTrackingMessage(server.current_client,(char *)key->ptr,sdslen(key->ptr),0);
-//             } else {
-//                 sendTrackingMessage(server.current_client,shared.null[server.current_client->resp]->ptr,
-//                     sdslen(shared.null[server.current_client->resp]->ptr),1);
-//             }
-//         }
-//         if (key != NULL) decrRefCount(key);
-//     }
-//     listEmpty(server.tracking_pending_keys);
-// }
+    // listRewind(server.tracking_pending_keys,&li);
+    // while ((ln = listNext(&li)) != NULL) {
+    //     robj *key = listNodeValue(ln);
+    //     /* current_client maybe freed, so we need to send invalidation
+    //      * message only when current_client is still alive */
+    //     if (server.current_client != NULL) {
+    //         if (key != NULL) {
+    //             sendTrackingMessage(server.current_client,(char *)key->ptr,sdslen(key->ptr),0);
+    //         } else {
+    //             sendTrackingMessage(server.current_client,shared.null[server.current_client->resp]->ptr,
+    //                 sdslen(shared.null[server.current_client->resp]->ptr),1);
+    //         }
+    //     }
+    //     if (key != NULL) decrRefCount(key);
+    // }
+    // listEmpty(server.tracking_pending_keys);
+}
 
 // /* This function is called when one or all the Redis databases are
 //  * flushed. Caching keys are not specific for each DB but are global: 

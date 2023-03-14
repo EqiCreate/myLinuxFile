@@ -44,6 +44,15 @@ typedef long long ustime_t; /* microsecond time type. */
 typedef struct redisObject robj;
 #include "redismodule.h"    /* Redis modules API defines. */
 
+/* Command call flags, see call() function */
+#define CMD_CALL_NONE 0
+#define CMD_CALL_SLOWLOG (1<<0)
+#define CMD_CALL_STATS (1<<1)
+#define CMD_CALL_PROPAGATE_AOF (1<<2)
+#define CMD_CALL_PROPAGATE_REPL (1<<3)
+#define CMD_CALL_PROPAGATE (CMD_CALL_PROPAGATE_AOF|CMD_CALL_PROPAGATE_REPL)
+#define CMD_CALL_FULL (CMD_CALL_SLOWLOG | CMD_CALL_STATS | CMD_CALL_PROPAGATE)
+#define CMD_CALL_FROM_MODULE (1<<4)  /* From RM_Call */
 
 /* Must be synced with ARG_TYPE_STR and generate-command-code.py */
 typedef enum {
@@ -931,7 +940,7 @@ struct redisServer {
     int sentinel_mode;          /* True if this instance is a Sentinel. */
     size_t initial_memory_usage; /* Bytes used after initialization. */
     // int always_show_logo;       /* Show logo even for non-stdout logging. */
-    // int in_exec;                /* Are we inside EXEC? */
+    int in_exec;                /* Are we inside EXEC? */
     int busy_module_yield_flags;         /* Are we inside a busy module? (triggered by RM_Yield). see BUSY_MODULE_YIELD_ flags. */
     // const char *busy_module_yield_reply; /* When non-null, we are inside RM_Yield. */
     int core_propagates;        /* Is the core (in oppose to the module subsystem) is in charge of calling propagatePendingCommands? */
@@ -999,7 +1008,7 @@ struct redisServer {
     // off_t loading_process_events_interval_bytes;
     // /* Fields used only for stats */
     // time_t stat_starttime;          /* Server start time */
-    // long long stat_numcommands;     /* Number of processed commands */
+    long long stat_numcommands;     /* Number of processed commands */
     long long stat_numconnections;  /* Number of connections received */
     // long long stat_expiredkeys;     /* Number of expired keys */
     // double stat_expired_stale_perc; /* Percentage of keys probably expired */
@@ -1273,7 +1282,7 @@ struct redisServer {
     // /* Client side caching. */
     // unsigned int tracking_clients;  /* # of clients with tracking enabled.*/
     // size_t tracking_table_max_keys; /* Max number of keys in tracking table. */
-    // list *tracking_pending_keys; /* tracking invalidation keys pending to flush */
+    list *tracking_pending_keys; /* tracking invalidation keys pending to flush */
     // /* Sort parameters - qsort_r() is only available under BSD so we
     //  * have to take this state global, in order to pass it to sortCompare() */
     // int sort_desc;
@@ -1339,7 +1348,7 @@ struct redisServer {
     int cluster_drop_packet_filter; /* Debug config that allows tactically
     //                                * dropping packets of a specific type */
     // /* Scripting */
-    // client *script_caller;       /* The client running script right now, or NULL */
+    client *script_caller;       /* The client running script right now, or NULL */
     // mstime_t busy_reply_threshold;  /* Script / module timeout in milliseconds */
     // int pre_command_oom_state;         /* OOM before command (script?) was started */
     // int script_disable_deny_script;    /* Allow running commands marked "no-script" inside a script. */
@@ -2006,8 +2015,16 @@ int listenToPort(connListener *fds);
 void processEventsWhileBlocked(void);
 void updateCachedTime(int update_daylight_info);
 void whileBlockedCron();
-
-
+void handleClientsBlockedOnKeys(void);
+/* flags for incrCommandFailedCalls */
+#define ERROR_COMMAND_REJECTED (1<<0) /* Indicate to update the command rejected stats */
+#define ERROR_COMMAND_FAILED (1<<1) /* Indicate to update the command failed stats */
+int incrCommandStatsOnError(struct redisCommand *cmd, int flags);
+void call(client *c, int flags);
+void execCommand(client *c);
+void afterCommand(client *c);
+void propagatePendingCommands();
+void trackingHandlePendingKeyInvalidations(void);
 
 
 #include "rdb.h"
