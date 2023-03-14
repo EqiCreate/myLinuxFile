@@ -2657,8 +2657,8 @@ void readQueryFromClient(connection *conn) {
 
     /* There is more data in the client input buffer, continue parsing it
      * and check if there is a full command to execute. */
-    // if (processInputBuffer(c) == C_ERR)
-        //  c = NULL;  //debug michael
+    if (processInputBuffer(c) == C_ERR)
+         c = NULL;  //debug michael
 
 done:
     beforeNextClient(c);

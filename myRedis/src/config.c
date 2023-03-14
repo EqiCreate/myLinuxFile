@@ -2034,7 +2034,8 @@ int setNumericType(standardConfig *config, long long val, const char **err) {
     } else if (config->data.numeric.numeric_type == NUMERIC_TYPE_LONG_LONG) {
         // if (config->flags & MODULE_CONFIG)
         //     return setModuleNumericConfig(config->privdata, val, err);
-        // else *(config->data.numeric.config.ll) = (long long) val;
+        // else 
+        *(config->data.numeric.config.ll) = (long long) val;
     } else if (config->data.numeric.numeric_type == NUMERIC_TYPE_ULONG_LONG) {
         *(config->data.numeric.config.ull) = (unsigned long long) val;
     } else if (config->data.numeric.numeric_type == NUMERIC_TYPE_SIZE_T) {
@@ -2271,12 +2272,12 @@ static void numericConfigRewrite(standardConfig *config, const char *name, struc
 //     } \
 // }
 
-// #define createLongLongConfig(name, alias, flags, lower, upper, config_addr, default, num_conf_flags, is_valid, apply) \
-//     embedCommonNumericalConfig(name, alias, flags, lower, upper, config_addr, default, num_conf_flags, is_valid, apply) \
-//         .numeric_type = NUMERIC_TYPE_LONG_LONG, \
-//         .config.ll = &(config_addr) \
-//     } \
-// }
+#define createLongLongConfig(name, alias, flags, lower, upper, config_addr, default, num_conf_flags, is_valid, apply) \
+    embedCommonNumericalConfig(name, alias, flags, lower, upper, config_addr, default, num_conf_flags, is_valid, apply) \
+        .numeric_type = NUMERIC_TYPE_LONG_LONG, \
+        .config.ll = &(config_addr) \
+    } \
+}
 
 // #define createULongLongConfig(name, alias, flags, lower, upper, config_addr, default, num_conf_flags, is_valid, apply) \
 //     embedCommonNumericalConfig(name, alias, flags, lower, upper, config_addr, default, num_conf_flags, is_valid, apply) \
@@ -3128,7 +3129,7 @@ standardConfig static_configs[] = {
     // createLongLongConfig("cluster-ping-interval", NULL, MODIFIABLE_CONFIG | HIDDEN_CONFIG, 0, LLONG_MAX, server.cluster_ping_interval, 0, INTEGER_CONFIG, NULL, NULL),
     // createLongLongConfig("slowlog-log-slower-than", NULL, MODIFIABLE_CONFIG, -1, LLONG_MAX, server.slowlog_log_slower_than, 10000, INTEGER_CONFIG, NULL, NULL),
     // createLongLongConfig("latency-monitor-threshold", NULL, MODIFIABLE_CONFIG, 0, LLONG_MAX, server.latency_monitor_threshold, 0, INTEGER_CONFIG, NULL, NULL),
-    // createLongLongConfig("proto-max-bulk-len", NULL, DEBUG_CONFIG | MODIFIABLE_CONFIG, 1024*1024, LONG_MAX, server.proto_max_bulk_len, 512ll*1024*1024, MEMORY_CONFIG, NULL, NULL), /* Bulk request max size */
+    createLongLongConfig("proto-max-bulk-len", NULL, DEBUG_CONFIG | MODIFIABLE_CONFIG, 1024*1024, LONG_MAX, server.proto_max_bulk_len, 512ll*1024*1024, MEMORY_CONFIG, NULL, NULL), /* Bulk request max size */
     // createLongLongConfig("stream-node-max-entries", NULL, MODIFIABLE_CONFIG, 0, LLONG_MAX, server.stream_node_max_entries, 100, INTEGER_CONFIG, NULL, NULL),
     // createLongLongConfig("repl-backlog-size", NULL, MODIFIABLE_CONFIG, 1, LLONG_MAX, server.repl_backlog_size, 1024*1024, MEMORY_CONFIG, NULL, updateReplBacklogSize), /* Default: 1mb */
 
