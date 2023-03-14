@@ -1306,26 +1306,26 @@ void acceptCommonHandler(connection *conn, int flags, char *ip) {
      * called, because we don't want to even start transport-level negotiation
      * if rejected. */
     // if (listLength(server.clients) + getClusterConnectionsCount()
-    if (listLength(server.clients) + 1 // debug by michael
-        >= server.maxclients)
-    {
-        char *err;
-        if (server.cluster_enabled)
-            err = "-ERR max number of clients + cluster "
-                  "connections reached\r\n";
-        else
-            err = "-ERR max number of clients reached\r\n";
+    // if (listLength(server.clients) // debug by michael
+    //     >= server.maxclients)
+    // {
+    //     char *err;
+    //     if (server.cluster_enabled)
+    //         err = "-ERR max number of clients + cluster "
+    //               "connections reached\r\n";
+    //     else
+    //         err = "-ERR max number of clients reached\r\n";
 
-        /* That's a best effort error message, don't check write errors.
-         * Note that for TLS connections, no handshake was done yet so nothing
-         * is written and the connection will just drop. */
-        if (connWrite(conn,err,strlen(err)) == -1) {
-            /* Nothing to do, Just to avoid the warning... */
-        }
-        server.stat_rejected_conn++;
-        connClose(conn);
-        return;
-    }
+    //     /* That's a best effort error message, don't check write errors.
+    //      * Note that for TLS connections, no handshake was done yet so nothing
+    //      * is written and the connection will just drop. */
+    //     if (connWrite(conn,err,strlen(err)) == -1) {
+    //         /* Nothing to do, Just to avoid the warning... */
+    //     }
+    //     server.stat_rejected_conn++;
+    //     connClose(conn);
+    //     return;
+    // }
 
     /* Create connection and client */
     if ((c = createClient(conn)) == NULL) {
@@ -3938,38 +3938,38 @@ uint32_t isPausedActions(uint32_t actions_bitmask) {
 //  * write, close sequence needed to serve a client.
 //  *
 //  * The function returns the total number of events processed. */
-// void processEventsWhileBlocked(void) {
-//     int iterations = 4; /* See the function top-comment. */
+void processEventsWhileBlocked(void) {
+    int iterations = 4; /* See the function top-comment. */
 
-//     /* Update our cached time since it is used to create and update the last
-//      * interaction time with clients and for other important things. */
-//     updateCachedTime(0);
+    /* Update our cached time since it is used to create and update the last
+     * interaction time with clients and for other important things. */
+    updateCachedTime(0);
 
-//     /* Note: when we are processing events while blocked (for instance during
-//      * busy Lua scripts), we set a global flag. When such flag is set, we
-//      * avoid handling the read part of clients using threaded I/O.
-//      * See https://github.com/redis/redis/issues/6988 for more info.
-//      * Note that there could be cases of nested calls to this function,
-//      * specifically on a busy script during async_loading rdb, and scripts
-//      * that came from AOF. */
-//     ProcessingEventsWhileBlocked++;
-//     while (iterations--) {
-//         long long startval = server.events_processed_while_blocked;
-//         long long ae_events = aeProcessEvents(server.el,
-//             AE_FILE_EVENTS|AE_DONT_WAIT|
-//             AE_CALL_BEFORE_SLEEP|AE_CALL_AFTER_SLEEP);
-//         /* Note that server.events_processed_while_blocked will also get
-//          * incremented by callbacks called by the event loop handlers. */
-//         server.events_processed_while_blocked += ae_events;
-//         long long events = server.events_processed_while_blocked - startval;
-//         if (!events) break;
-//     }
+    /* Note: when we are processing events while blocked (for instance during
+     * busy Lua scripts), we set a global flag. When such flag is set, we
+     * avoid handling the read part of clients using threaded I/O.
+     * See https://github.com/redis/redis/issues/6988 for more info.
+     * Note that there could be cases of nested calls to this function,
+     * specifically on a busy script during async_loading rdb, and scripts
+     * that came from AOF. */
+    ProcessingEventsWhileBlocked++;
+    while (iterations--) {
+        long long startval = server.events_processed_while_blocked;
+        long long ae_events = aeProcessEvents(server.el,
+            AE_FILE_EVENTS|AE_DONT_WAIT|
+            AE_CALL_BEFORE_SLEEP|AE_CALL_AFTER_SLEEP);
+        /* Note that server.events_processed_while_blocked will also get
+         * incremented by callbacks called by the event loop handlers. */
+        server.events_processed_while_blocked += ae_events;
+        long long events = server.events_processed_while_blocked - startval;
+        if (!events) break;
+    }
 
-//     whileBlockedCron();
+    whileBlockedCron(); //debug michael
 
-//     ProcessingEventsWhileBlocked--;
-//     serverAssert(ProcessingEventsWhileBlocked >= 0);
-// }
+    ProcessingEventsWhileBlocked--;
+    serverAssert(ProcessingEventsWhileBlocked >= 0);
+}
 
 // /* ==========================================================================
 //  * Threaded I/O

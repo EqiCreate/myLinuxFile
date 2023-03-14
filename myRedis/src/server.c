@@ -1337,12 +1337,12 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     // if (ProcessingEventsWhileBlocked) {
     //     uint64_t processed = 0;
     //     processed += handleClientsWithPendingReadsUsingThreads();
-    //     processed += connTypeProcessPendingData();
-    //     if (server.aof_state == AOF_ON || server.aof_state == AOF_WAIT_REWRITE)
-    //         flushAppendOnlyFile(0);
-    //     processed += handleClientsWithPendingWrites();
-    //     processed += freeClientsInAsyncFreeQueue();
-    //     server.events_processed_while_blocked += processed;
+    //     // processed += connTypeProcessPendingData();
+    //     // if (server.aof_state == AOF_ON || server.aof_state == AOF_WAIT_REWRITE)
+    //     //     flushAppendOnlyFile(0);
+    //     // processed += handleClientsWithPendingWrites();
+    //     // processed += freeClientsInAsyncFreeQueue();
+    //     // server.events_processed_while_blocked += processed;
     //     return;
     // }
 
@@ -1459,24 +1459,24 @@ void afterSleep(struct aeEventLoop *eventLoop) {
     UNUSED(eventLoop);
 
     /* Update the time cache. */
-    // updateCachedTime(1);
+    updateCachedTime(1);
 
     // /* Do NOT add anything above moduleAcquireGIL !!! */
 
     // /* Acquire the modules GIL so that their threads won't touch anything. */
-    // if (!ProcessingEventsWhileBlocked) {
-    //     if (moduleCount()) {
-    //         mstime_t latency;
-    //         latencyStartMonitor(latency);
+    if (!ProcessingEventsWhileBlocked) {
+        // if (moduleCount()) {
+        //     mstime_t latency;
+        //     latencyStartMonitor(latency);
 
-    //         moduleAcquireGIL();
-    //         moduleFireServerEvent(REDISMODULE_EVENT_EVENTLOOP,
-    //                               REDISMODULE_SUBEVENT_EVENTLOOP_AFTER_SLEEP,
-    //                               NULL);
-    //         latencyEndMonitor(latency);
-    //         latencyAddSampleIfNeeded("module-acquire-GIL",latency);
-    //     }
-    // }
+        //     moduleAcquireGIL();
+        //     moduleFireServerEvent(REDISMODULE_EVENT_EVENTLOOP,
+        //                           REDISMODULE_SUBEVENT_EVENTLOOP_AFTER_SLEEP,
+        //                           NULL);
+        //     latencyEndMonitor(latency);
+        //     latencyAddSampleIfNeeded("module-acquire-GIL",latency);
+        // }
+    }
 }
 
 
@@ -1502,9 +1502,9 @@ void initServer(void) {
     // server.current_client = NULL;
     // server.errors = raxNew();
     server.in_nested_call = 0;
-    // server.clients = listCreate();
+    server.clients = listCreate();
     // server.clients_index = raxNew();
-    // server.clients_to_close = listCreate();
+    server.clients_to_close = listCreate();
     // server.slaves = listCreate();
     // server.monitors = listCreate();
     // server.clients_pending_write = listCreate();
@@ -2253,6 +2253,98 @@ void pingCommand(client *c) {
     }
 }
 
+static inline void updateCachedTimeWithUs(int update_daylight_info, const long long ustime) {
+    server.ustime = ustime;
+    server.mstime = server.ustime / 1000;
+    time_t unixtime = server.mstime / 1000;
+    atomicSet(server.unixtime, unixtime);
+
+    /* To get information about daylight saving time, we need to call
+     * localtime_r and cache the result. However calling localtime_r in this
+     * context is safe since we will never fork() while here, in the main
+     * thread. The logging function will call a thread safe version of
+     * localtime that has no locks. */
+    if (update_daylight_info) {
+        struct tm tm;
+        time_t ut = server.unixtime;
+        localtime_r(&ut,&tm);
+        server.daylight_active = tm.tm_isdst;
+    }
+}
+
+/* This function fills in the role of serverCron during RDB or AOF loading, and
+ * also during blocked scripts.
+ * It attempts to do its duties at a similar rate as the configured server.hz,
+ * and updates cronloops variable so that similarly to serverCron, the
+ * run_with_period can be used. */
+void whileBlockedCron() {
+    /* Here we may want to perform some cron jobs (normally done server.hz times
+     * per second). */
+
+    /* Since this function depends on a call to blockingOperationStarts, let's
+     * make sure it was done. */
+    // serverAssert(server.blocked_last_cron);
+
+    // /* In case we where called too soon, leave right away. This way one time
+    //  * jobs after the loop below don't need an if. and we don't bother to start
+    //  * latency monitor if this function is called too often. */
+    // if (server.blocked_last_cron >= server.mstime)
+    //     return;
+
+    // // mstime_t latency;
+    // // latencyStartMonitor(latency); michael debug
+
+    // /* In some cases we may be called with big intervals, so we may need to do
+    //  * extra work here. This is because some of the functions in serverCron rely
+    //  * on the fact that it is performed every 10 ms or so. For instance, if
+    //  * activeDefragCycle needs to utilize 25% cpu, it will utilize 2.5ms, so we
+    //  * need to call it multiple times. */
+    // long hz_ms = 1000/server.hz;
+    // while (server.blocked_last_cron < server.mstime) {
+
+    //     /* Defrag keys gradually. */
+    //     activeDefragCycle();
+
+    //     server.blocked_last_cron += hz_ms;
+
+    //     /* Increment cronloop so that run_with_period works. */
+    //     server.cronloops++;
+    // }
+
+    // /* Other cron jobs do not need to be done in a loop. No need to check
+    //  * server.blocked_last_cron since we have an early exit at the top. */
+
+    // /* Update memory stats during loading (excluding blocked scripts) */
+    // if (server.loading) cronUpdateMemoryStats();
+
+    // // latencyEndMonitor(latency); //debug michael
+    // // latencyAddSampleIfNeeded("while-blocked-cron",latency);
+
+    // /* We received a SIGTERM during loading, shutting down here in a safe way,
+    //  * as it isn't ok doing so inside the signal handler. */
+    // if (server.shutdown_asap && server.loading) {
+    //     if (prepareForShutdown(SHUTDOWN_NOSAVE) == C_OK) exit(0);
+    //     serverLog(LL_WARNING,"SIGTERM received but errors trying to shut down the server, check the logs for more information");
+    //     server.shutdown_asap = 0;
+    //     server.last_sig_received = 0;
+    // }
+}
+
+/* We take a cached value of the unix time in the global state because with
+ * virtual memory and aging there is to store the current time in objects at
+ * every object access, and accuracy is not needed. To access a global var is
+ * a lot faster than calling time(NULL).
+ *
+ * This function should be fast because it is called at every command execution
+ * in call(), so it is possible to decide if to update the daylight saving
+ * info or not using the 'update_daylight_info' argument. Normally we update
+ * such info only when calling this function from serverCron() but not when
+ * calling it from call(). */
+void updateCachedTime(int update_daylight_info) {
+    const long long us = ustime();
+    updateCachedTimeWithUs(update_daylight_info, us);
+}
+
 /* Get the server listener by type name */
 connListener *listenerByType(const char *typename) {
     int conn_index;
@@ -2442,6 +2534,70 @@ void initListeners() {
     }
 }
 
+
+/* Initialize a set of file descriptors to listen to the specified 'port'
+ * binding the addresses specified in the Redis server configuration.
+ *
+ * The listening file descriptors are stored in the integer array 'fds'
+ * and their number is set in '*count'. Actually @sfd should be 'listener',
+ * for the historical reasons, let's keep 'sfd' here.
+ *
+ * The addresses to bind are specified in the global server.bindaddr array
+ * and their number is server.bindaddr_count. If the server configuration
+ * contains no specific addresses to bind, this function will try to
+ * bind * (all addresses) for both the IPv4 and IPv6 protocols.
+ *
+ * On success the function returns C_OK.
+ *
+ * On error the function returns C_ERR. For the function to be on
+ * error, at least one of the server.bindaddr addresses was
+ * impossible to bind, or no bind addresses were specified in the server
+ * configuration but the function is not able to bind * for at least
+ * one of the IPv4 or IPv6 protocols. */
+int listenToPort(connListener *sfd) {
+    int j;
+    int port = sfd->port;
+    char **bindaddr = sfd->bindaddr;
+
+    /* If we have no bind address, we don't listen on a TCP socket */
+    if (sfd->bindaddr_count == 0) return C_OK;
+
+    for (j = 0; j < sfd->bindaddr_count; j++) {
+        char* addr = bindaddr[j];
+        int optional = *addr == '-';
+        if (optional) addr++;
+        if (strchr(addr,':')) {
+            /* Bind IPv6 address. */
+            sfd->fd[sfd->count] = anetTcp6Server(server.neterr,port,addr,server.tcp_backlog);
+        } else {
+            /* Bind IPv4 address. */
+            sfd->fd[sfd->count] = anetTcpServer(server.neterr,port,addr,server.tcp_backlog);
+        }
+        if (sfd->fd[sfd->count] == ANET_ERR) {
+            int net_errno = errno;
+            serverLog(LL_WARNING,
+                "Warning: Could not create server TCP listening socket %s:%d: %s",
+                addr, port, server.neterr);
+            if (net_errno == EADDRNOTAVAIL && optional)
+                continue;
+            if (net_errno == ENOPROTOOPT     || net_errno == EPROTONOSUPPORT ||
+                net_errno == ESOCKTNOSUPPORT || net_errno == EPFNOSUPPORT ||
+                net_errno == EAFNOSUPPORT)
+                continue;
+
+            /* Rollback successful listens before exiting */
+            closeListener(sfd);
+            return C_ERR;
+        }
+        if (server.socket_mark_id > 0) anetSetSockMarkId(NULL, sfd->fd[sfd->count], server.socket_mark_id);
+        anetNonBlock(NULL,sfd->fd[sfd->count]);
+        anetCloexec(sfd->fd[sfd->count]);
+        sfd->count++;
+    }
+    return C_OK;
+}
+
+
 # pragma endregion
 
 int main(int argc, char **argv)
@@ -2484,7 +2640,7 @@ int main(int argc, char **argv)
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the
                   basic networking code and client creation depends on it. */
     // moduleInitModulesSystem();
-    // connTypeInitialize();
+    connTypeInitialize();
 
     /* Store the executable path and arguments in a safe place in order
      * to be able to restart the server later. */
@@ -2563,8 +2719,9 @@ int main(int argc, char **argv)
     } else {
         serverLog(LL_WARNING, "Configuration loaded");
     }
-    initListeners();
     initServer();
+
+    initListeners();
 
 
     aeMain(server.el);

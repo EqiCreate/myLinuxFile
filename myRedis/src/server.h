@@ -1299,7 +1299,7 @@ struct redisServer {
     time_t timezone;            /* Cached timezone. As set by tzset(). */
     int daylight_active;        /* Currently in daylight saving time. */
     mstime_t mstime;            /* 'unixtime' in milliseconds. */
-    // ustime_t ustime;            /* 'unixtime' in microseconds. */
+    ustime_t ustime;            /* 'unixtime' in microseconds. */
     size_t blocking_op_nesting; /* Nesting level of blocking operation, used to reset blocked_last_cron. */
     long long blocked_last_cron; /* Indicate the mstime of the last time we did cron jobs from a blocking operation */
     // /* Pubsub */
@@ -2002,6 +2002,12 @@ int createSocketAcceptHandler(connListener *sfd, aeFileProc *accept_handler);
 connListener *listenerByType(const char *typename);
 int changeListener(connListener *listener);
 void closeListener(connListener *listener);
+int listenToPort(connListener *fds);
+void processEventsWhileBlocked(void);
+void updateCachedTime(int update_daylight_info);
+void whileBlockedCron();
+
+
 
 
 #include "rdb.h"
