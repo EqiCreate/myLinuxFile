@@ -878,7 +878,24 @@ typedef struct client {
     size_t buf_usable_size; /* Usable size of buffer. */
     char *buf;
 } client;
-
+typedef struct redisTLSContextConfig {
+    char *cert_file;                /* Server side and optionally client side cert file name */
+    char *key_file;                 /* Private key filename for cert_file */
+    char *key_file_pass;            /* Optional password for key_file */
+    char *client_cert_file;         /* Certificate to use as a client; if none, use cert_file */
+    char *client_key_file;          /* Private key filename for client_cert_file */
+    char *client_key_file_pass;     /* Optional password for client_key_file */
+    char *dh_params_file;
+    char *ca_cert_file;
+    char *ca_cert_dir;
+    char *protocols;
+    char *ciphers;
+    char *ciphersuites;
+    int prefer_server_ciphers;
+    int session_caching;
+    int session_cache_size;
+    int session_cache_timeout;
+} redisTLSContextConfig;
 
 
 struct redisServer {
@@ -1349,9 +1366,9 @@ struct redisServer {
     size_t system_memory_size;  /* Total memory in system as reported by OS */
     // /* TLS Configuration */
     int tls_cluster;
-    // int tls_replication;
+    int tls_replication;
     // int tls_auth_clients;
-    // redisTLSContextConfig tls_ctx_config;
+    redisTLSContextConfig tls_ctx_config;
     // /* cpu affinity */
     // char *server_cpulist; /* cpu affinity list of redis server main/io thread. */
     // char *bio_cpulist; /* cpu affinity list of bio thread. */
@@ -1981,6 +1998,10 @@ void commandAddSubcommand(struct redisCommand *parent, struct redisCommand *subc
 unsigned long ACLGetCommandID(sds cmdname);
 sds catSubCommandFullname(const char *parent_name, const char *sub_name);
 
+int createSocketAcceptHandler(connListener *sfd, aeFileProc *accept_handler);
+connListener *listenerByType(const char *typename);
+int changeListener(connListener *listener);
+void closeListener(connListener *listener);
 
 
 #include "rdb.h"

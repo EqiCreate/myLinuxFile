@@ -27,7 +27,8 @@
         "endianconv.h": "c",
         "stream.h": "c",
         "rax.h": "c",
-        "linenoise.h": "c"
+        "linenoise.h": "c",
+        "type_traits": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }
