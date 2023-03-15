@@ -34,6 +34,7 @@
 #if defined(HAVE_SYSCTL_KIPC_SOMAXCONN) || defined(HAVE_SYSCTL_KERN_SOMAXCONN)
 #include <sys/sysctl.h>
 #endif
+struct redisCommand * _debugCommand;
 
 // #include "functions.h"
 extern int ProcessingEventsWhileBlocked;
@@ -57,7 +58,8 @@ struct redisCommand *lookupCommandLogic(dict *commands, robj **argv, int argc, i
     struct redisCommand *base_cmd = dictFetchValue(commands, argv[0]->ptr);
     if(base_cmd==NULL)
     {
-        base_cmd=dictGetVal(server.commands->ht_table[0][0]);
+        base_cmd=_debugCommand;
+        // base_cmd=dictGetVal(server.commands->ht_table[0][0]);
     }
     int has_subcommands = base_cmd && base_cmd->subcommands_dict;
     if (argc == 1 || !has_subcommands) {
@@ -241,6 +243,12 @@ int populateCommandStructure(struct redisCommand *c) {
                 continue;
 
             commandAddSubcommand(c, sub, sub->declared_name);
+
+             //debug michael 
+            if(sub->declared_name=="docs")
+            {
+                _debugCommand=sub;
+            }
         }
     }
 
@@ -385,6 +393,12 @@ void populateCommandTable(void) {
          * by rename-command statements in redis.conf. */
         retval2 = dictAdd(server.orig_commands, sdsdup(c->fullname), c);
         serverAssert(retval1 == DICT_OK && retval2 == DICT_OK);
+
+        //debug michael 
+        if(c->fullname=="commandDocsCommand")
+        {
+            _debugCommand=c;
+        }
     }
 }
 
@@ -2736,8 +2750,8 @@ void pingCommand(client *c) {
         if (c->argc == 1)
             addReply(c,shared.pong);
         else
-            addReply(c,shared.pong);
-            // addReplyBulk(c,c->argv[1]); //debug michael
+            // addReply(c,shared.pong);
+            addReplyBulk(c,c->argv[1]); //debug michael
     }
 }
 

@@ -7,6 +7,7 @@
   - linkClient+ initClientMultiState
 - init & lookup commands 
   - populateCommandTable
+  - lookupCommandLogic
 - read from client
   - network
     - readQueryFromClient

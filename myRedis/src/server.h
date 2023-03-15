@@ -472,6 +472,10 @@ typedef enum {
 #define BUSY_MODULE_YIELD_EVENTS (1<<0)
 #define BUSY_MODULE_YIELD_CLIENTS (1<<1)
 
+/* Append only defines */
+#define AOF_FSYNC_NO 0
+#define AOF_FSYNC_ALWAYS 1
+#define AOF_FSYNC_EVERYSEC 2
 
 /* We can print the stacktrace, so our assert is defined this way: */
 // #define serverAssertWithInfo(_c,_o,_e) ((_e)?(void)0 : (_serverAssertWithInfo(_c,_o,#_e,__FILE__,__LINE__),redis_unreachable()))
@@ -1107,7 +1111,7 @@ struct redisServer {
     /* AOF persistence */
     // int aof_enabled;                /* AOF configuration */
     int aof_state;                  /* AOF_(ON|OFF|WAIT_REWRITE) */
-    // int aof_fsync;                  /* Kind of fsync() policy */
+    int aof_fsync;                  /* Kind of fsync() policy */
     // char *aof_filename;             /* Basename of the AOF file and manifest file */
     // char *aof_dirname;              /* Name of the AOF directory */
     // int aof_no_fsync_on_rewrite;    /* Don't fsync if a rewrite is in prog. */

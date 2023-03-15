@@ -219,22 +219,22 @@ client *createClient(connection *conn) {
     return c;
 }
 
-// void installClientWriteHandler(client *c) {
-//     int ae_barrier = 0;
-//     /* For the fsync=always policy, we want that a given FD is never
-//      * served for reading and writing in the same event loop iteration,
-//      * so that in the middle of receiving the query, and serving it
-//      * to the client, we'll call beforeSleep() that will do the
-//      * actual fsync of AOF to disk. the write barrier ensures that. */
-//     if (server.aof_state == AOF_ON &&
-//         server.aof_fsync == AOF_FSYNC_ALWAYS)
-//     {
-//         ae_barrier = 1;
-//     }
-//     if (connSetWriteHandlerWithBarrier(c->conn, sendReplyToClient, ae_barrier) == C_ERR) {
-//         freeClientAsync(c);
-//     }
-// }
+void installClientWriteHandler(client *c) {
+    int ae_barrier = 0;
+    /* For the fsync=always policy, we want that a given FD is never
+     * served for reading and writing in the same event loop iteration,
+     * so that in the middle of receiving the query, and serving it
+     * to the client, we'll call beforeSleep() that will do the
+     * actual fsync of AOF to disk. the write barrier ensures that. */
+    if (server.aof_state == AOF_ON &&
+        server.aof_fsync == AOF_FSYNC_ALWAYS)
+    {
+        ae_barrier = 1;
+    }
+    if (connSetWriteHandlerWithBarrier(c->conn, sendReplyToClient, ae_barrier) == C_ERR) {
+        freeClientAsync(c);
+    }
+}
 
 // /* This function puts the client in the queue of clients that should write
 //  * their output buffers to the socket. Note that it does not *yet* install
@@ -1980,7 +1980,7 @@ client *lookupClientByID(uint64_t id) {
 // /* Write event handler. Just send data to the client. */
 void sendReplyToClient(connection *conn) {
     client *c = connGetPrivateData(conn);
-    writeToClient(c,1);
+    // writeToClient(c,1);
 }
 
 // /* This function is called just before entering the event loop, in the hope
