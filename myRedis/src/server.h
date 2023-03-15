@@ -2028,6 +2028,13 @@ void trackingHandlePendingKeyInvalidations(void);
 int keyIsExpired(redisDb *db, robj *key);
 void addReplyArrayLen(client *c, long length);
 int ACLCheckAllPerm(client *c, int *idxptr);
+robj *makeObjectShared(robj *o);
+client *lookupClientByID(uint64_t id);
+void addReplyPushLen(client *c, long length);
+void addReplyBulkCBuffer(client *c, const void *p, size_t len);
+void addReplyLongLong(client *c, long long ll);
+// void addReplyPubsubMessage(client *c, robj *channel, robj *msg, robj *message_bulk);
+void sendReplyToClient(connection *conn);
 
 #pragma region commands
 

@@ -1,5 +1,18 @@
 ### 20230315
 - 优化参数除了看makefile，需要看.make-settings
+- network.c
+  - acceptCommonHandler
+  - createClient 
+    - c.argv=null 
+  - linkClient+ initClientMultiState
+- init & lookup commands 
+  - populateCommandTable
+- read from client
+  - network
+    - readQueryFromClient
+    - processMultibulkBuffer  reset c->argv
+    - processCommandAndResetClient
+    - processCommand
 ### 20230214
 - 内联函数inline ：根define 差不多，空间换取时间,多用于for循环中的重叠代码，且自身简短不带有其他循环. 好处是不浪费函数栈只是简单的复制
 - attribute 声明: __attribute__(attribute_list): 一般是告诉编译器gunc如何处理内存中的数据如 __attribute__((aligned(8))) : 结构对齐8字节

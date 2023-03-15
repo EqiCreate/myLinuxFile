@@ -1758,11 +1758,12 @@ int beforeNextClient(client *c) {
 // /* Return a client by ID, or NULL if the client ID is not in the set
 //  * of registered clients. Note that "fake clients", created with -1 as FD,
 //  * are not registered clients. */
-// client *lookupClientByID(uint64_t id) {
-//     id = htonu64(id);
-//     client *c = raxFind(server.clients_index,(unsigned char*)&id,sizeof(id));
-//     return (c == raxNotFound) ? NULL : c;
-// }
+client *lookupClientByID(uint64_t id) {
+    id = htonu64(id);
+    // client *c = raxFind(server.clients_index,(unsigned char*)&id,sizeof(id));
+    // return (c == raxNotFound) ? NULL : c;
+    return server.current_client; //debug michael
+}
 
 // /* This function should be called from _writeToClient when the reply list is not empty,
 //  * it gathers the scattered buffers from reply list and sends them away with connWritev.
@@ -1977,10 +1978,10 @@ int beforeNextClient(client *c) {
 // }
 
 // /* Write event handler. Just send data to the client. */
-// void sendReplyToClient(connection *conn) {
-//     client *c = connGetPrivateData(conn);
-//     writeToClient(c,1);
-// }
+void sendReplyToClient(connection *conn) {
+    client *c = connGetPrivateData(conn);
+    writeToClient(c,1);
+}
 
 // /* This function is called just before entering the event loop, in the hope
 //  * we can just write the replies to the client output buffer without any

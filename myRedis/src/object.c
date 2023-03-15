@@ -67,11 +67,11 @@ robj *createObject(int type, void *ptr) {
 //  * robj *myobject = makeObjectShared(createObject(...));
 //  *
 //  */
-// robj *makeObjectShared(robj *o) {
-//     serverAssert(o->refcount == 1);
-//     o->refcount = OBJ_SHARED_REFCOUNT;
-//     return o;
-// }
+robj *makeObjectShared(robj *o) {
+    serverAssert(o->refcount == 1);
+    o->refcount = OBJ_SHARED_REFCOUNT;
+    return o;
+}
 
 // /* Create a string object with encoding OBJ_ENCODING_RAW, that is a plain
 //  * string object where o->ptr points to a proper sds string. */
