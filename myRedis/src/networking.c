@@ -562,10 +562,10 @@ void afterErrorReply(client *c, const char *s, size_t len, int flags) {
 
 // /* The 'err' object is expected to start with -ERRORCODE and end with \r\n.
 //  * Unlike addReplyErrorSds and others alike which rely on addReplyErrorLength. */
-// void addReplyErrorObject(client *c, robj *err) {
-//     addReply(c, err);
-//     afterErrorReply(c, err->ptr, sdslen(err->ptr)-2, 0); /* Ignore trailing \r\n */
-// }
+void addReplyErrorObject(client *c, robj *err) {
+    addReply(c, err);
+    afterErrorReply(c, err->ptr, sdslen(err->ptr)-2, 0); /* Ignore trailing \r\n */
+}
 
 // /* Sends either a reply or an error reply by checking the first char.
 //  * If the first char is '-' the reply is considered an error.
@@ -653,15 +653,15 @@ void addReplyErrorArity(client *c) {
 //                         c->cmd->fullname);
 // }
 
-// void addReplyStatusLength(client *c, const char *s, size_t len) {
-//     addReplyProto(c,"+",1);
-//     addReplyProto(c,s,len);
-//     addReplyProto(c,"\r\n",2);
-// }
+void addReplyStatusLength(client *c, const char *s, size_t len) {
+    addReplyProto(c,"+",1);
+    addReplyProto(c,s,len);
+    addReplyProto(c,"\r\n",2);
+}
 
-// void addReplyStatus(client *c, const char *status) {
-//     addReplyStatusLength(c,status,strlen(status));
-// }
+void addReplyStatus(client *c, const char *status) {
+    addReplyStatusLength(c,status,strlen(status));
+}
 
 // void addReplyStatusFormat(client *c, const char *fmt, ...) {
 //     va_list ap;
@@ -702,126 +702,126 @@ void addReplyErrorArity(client *c) {
 
 // /* Adds an empty object to the reply list that will contain the multi bulk
 //  * length, which is not known when this function is called. */
-// void *addReplyDeferredLen(client *c) {
-//     /* Note that we install the write event here even if the object is not
-//      * ready to be sent, since we are sure that before returning to the
-//      * event loop setDeferredAggregateLen() will be called. */
-//     if (prepareClientToWrite(c) != C_OK) return NULL;
+void *addReplyDeferredLen(client *c) {
+    /* Note that we install the write event here even if the object is not
+     * ready to be sent, since we are sure that before returning to the
+     * event loop setDeferredAggregateLen() will be called. */
+    if (prepareClientToWrite(c) != C_OK) return NULL;
 
-//     /* Replicas should normally not cause any writes to the reply buffer. In case a rogue replica sent a command on the
-//      * replication link that caused a reply to be generated we'll simply disconnect it.
-//      * Note this is the simplest way to check a command added a response. Replication links are used to write data but
-//      * not for responses, so we should normally never get here on a replica client. */
-//     if (getClientType(c) == CLIENT_TYPE_SLAVE) {
-//         sds cmdname = c->lastcmd ? c->lastcmd->fullname : NULL;
-//         logInvalidUseAndFreeClientAsync(c, "Replica generated a reply to command '%s'",
-//                                         cmdname ? cmdname : "<unknown>");
-//         return NULL;
-//     }
+    /* Replicas should normally not cause any writes to the reply buffer. In case a rogue replica sent a command on the
+     * replication link that caused a reply to be generated we'll simply disconnect it.
+     * Note this is the simplest way to check a command added a response. Replication links are used to write data but
+     * not for responses, so we should normally never get here on a replica client. */
+    if (getClientType(c) == CLIENT_TYPE_SLAVE) {
+        sds cmdname = c->lastcmd ? c->lastcmd->fullname : NULL;
+        logInvalidUseAndFreeClientAsync(c, "Replica generated a reply to command '%s'",
+                                        cmdname ? cmdname : "<unknown>");
+        return NULL;
+    }
 
-//     trimReplyUnusedTailSpace(c);
-//     listAddNodeTail(c->reply,NULL); /* NULL is our placeholder. */
-//     return listLast(c->reply);
-// }
+    // trimReplyUnusedTailSpace(c); //debug michael
+    listAddNodeTail(c->reply,NULL); /* NULL is our placeholder. */
+    return listLast(c->reply);
+}
 
-// void setDeferredReply(client *c, void *node, const char *s, size_t length) {
-//     listNode *ln = (listNode*)node;
-//     clientReplyBlock *next, *prev;
+void setDeferredReply(client *c, void *node, const char *s, size_t length) {
+    listNode *ln = (listNode*)node;
+    clientReplyBlock *next, *prev;
 
-//     /* Abort when *node is NULL: when the client should not accept writes
-//      * we return NULL in addReplyDeferredLen() */
-//     if (node == NULL) return;
-//     serverAssert(!listNodeValue(ln));
+    /* Abort when *node is NULL: when the client should not accept writes
+     * we return NULL in addReplyDeferredLen() */
+    if (node == NULL) return;
+    serverAssert(!listNodeValue(ln));
 
-//     /* Normally we fill this dummy NULL node, added by addReplyDeferredLen(),
-//      * with a new buffer structure containing the protocol needed to specify
-//      * the length of the array following. However sometimes there might be room
-//      * in the previous/next node so we can instead remove this NULL node, and
-//      * suffix/prefix our data in the node immediately before/after it, in order
-//      * to save a write(2) syscall later. Conditions needed to do it:
-//      *
-//      * - The prev node is non-NULL and has space in it or
-//      * - The next node is non-NULL,
-//      * - It has enough room already allocated
-//      * - And not too large (avoid large memmove) */
-//     if (ln->prev != NULL && (prev = listNodeValue(ln->prev)) &&
-//         prev->size - prev->used > 0)
-//     {
-//         size_t len_to_copy = prev->size - prev->used;
-//         if (len_to_copy > length)
-//             len_to_copy = length;
-//         memcpy(prev->buf + prev->used, s, len_to_copy);
-//         prev->used += len_to_copy;
-//         length -= len_to_copy;
-//         if (length == 0) {
-//             listDelNode(c->reply, ln);
-//             return;
-//         }
-//         s += len_to_copy;
-//     }
+    /* Normally we fill this dummy NULL node, added by addReplyDeferredLen(),
+     * with a new buffer structure containing the protocol needed to specify
+     * the length of the array following. However sometimes there might be room
+     * in the previous/next node so we can instead remove this NULL node, and
+     * suffix/prefix our data in the node immediately before/after it, in order
+     * to save a write(2) syscall later. Conditions needed to do it:
+     *
+     * - The prev node is non-NULL and has space in it or
+     * - The next node is non-NULL,
+     * - It has enough room already allocated
+     * - And not too large (avoid large memmove) */
+    if (ln->prev != NULL && (prev = listNodeValue(ln->prev)) &&
+        prev->size - prev->used > 0)
+    {
+        size_t len_to_copy = prev->size - prev->used;
+        if (len_to_copy > length)
+            len_to_copy = length;
+        memcpy(prev->buf + prev->used, s, len_to_copy);
+        prev->used += len_to_copy;
+        length -= len_to_copy;
+        if (length == 0) {
+            listDelNode(c->reply, ln);
+            return;
+        }
+        s += len_to_copy;
+    }
 
-//     if (ln->next != NULL && (next = listNodeValue(ln->next)) &&
-//         next->size - next->used >= length &&
-//         next->used < PROTO_REPLY_CHUNK_BYTES * 4)
-//     {
-//         memmove(next->buf + length, next->buf, next->used);
-//         memcpy(next->buf, s, length);
-//         next->used += length;
-//         listDelNode(c->reply,ln);
-//     } else {
-//         /* Create a new node */
-//         clientReplyBlock *buf = zmalloc(length + sizeof(clientReplyBlock));
-//         /* Take over the allocation's internal fragmentation */
-//         buf->size = zmalloc_usable_size(buf) - sizeof(clientReplyBlock);
-//         buf->used = length;
-//         memcpy(buf->buf, s, length);
-//         listNodeValue(ln) = buf;
-//         c->reply_bytes += buf->size;
+    if (ln->next != NULL && (next = listNodeValue(ln->next)) &&
+        next->size - next->used >= length &&
+        next->used < PROTO_REPLY_CHUNK_BYTES * 4)
+    {
+        memmove(next->buf + length, next->buf, next->used);
+        memcpy(next->buf, s, length);
+        next->used += length;
+        listDelNode(c->reply,ln);
+    } else {
+        /* Create a new node */
+        clientReplyBlock *buf = zmalloc(length + sizeof(clientReplyBlock));
+        /* Take over the allocation's internal fragmentation */
+        buf->size = zmalloc_usable_size(buf) - sizeof(clientReplyBlock);
+        buf->used = length;
+        memcpy(buf->buf, s, length);
+        listNodeValue(ln) = buf;
+        c->reply_bytes += buf->size;
 
-//         closeClientOnOutputBufferLimitReached(c, 1);
-//     }
-// }
+        closeClientOnOutputBufferLimitReached(c, 1);
+    }
+}
 
 // /* Populate the length object and try gluing it to the next chunk. */
-// void setDeferredAggregateLen(client *c, void *node, long length, char prefix) {
-//     serverAssert(length >= 0);
+void setDeferredAggregateLen(client *c, void *node, long length, char prefix) {
+    serverAssert(length >= 0);
 
-//     /* Abort when *node is NULL: when the client should not accept writes
-//      * we return NULL in addReplyDeferredLen() */
-//     if (node == NULL) return;
+    /* Abort when *node is NULL: when the client should not accept writes
+     * we return NULL in addReplyDeferredLen() */
+    if (node == NULL) return;
 
-//     /* Things like *2\r\n, %3\r\n or ~4\r\n are emitted very often by the protocol
-//      * so we have a few shared objects to use if the integer is small
-//      * like it is most of the times. */
-//     const size_t hdr_len = OBJ_SHARED_HDR_STRLEN(length);
-//     const int opt_hdr = length < OBJ_SHARED_BULKHDR_LEN;
-//     if (prefix == '*' && opt_hdr) {
-//         setDeferredReply(c, node, shared.mbulkhdr[length]->ptr, hdr_len);
-//         return;
-//     }
-//     if (prefix == '%' && opt_hdr) {
-//         setDeferredReply(c, node, shared.maphdr[length]->ptr, hdr_len);
-//         return;
-//     }
-//     if (prefix == '~' && opt_hdr) {
-//         setDeferredReply(c, node, shared.sethdr[length]->ptr, hdr_len);
-//         return;
-//     }
+    /* Things like *2\r\n, %3\r\n or ~4\r\n are emitted very often by the protocol
+     * so we have a few shared objects to use if the integer is small
+     * like it is most of the times. */
+    const size_t hdr_len = OBJ_SHARED_HDR_STRLEN(length);
+    const int opt_hdr = length < OBJ_SHARED_BULKHDR_LEN;
+    if (prefix == '*' && opt_hdr) {
+        setDeferredReply(c, node, shared.mbulkhdr[length]->ptr, hdr_len);
+        return;
+    }
+    if (prefix == '%' && opt_hdr) {
+        setDeferredReply(c, node, shared.maphdr[length]->ptr, hdr_len);
+        return;
+    }
+    if (prefix == '~' && opt_hdr) {
+        setDeferredReply(c, node, shared.sethdr[length]->ptr, hdr_len);
+        return;
+    }
 
-//     char lenstr[128];
-//     size_t lenstr_len = snprintf(lenstr, sizeof(lenstr), "%c%ld\r\n", prefix, length);
-//     setDeferredReply(c, node, lenstr, lenstr_len);
-// }
+    char lenstr[128];
+    size_t lenstr_len = snprintf(lenstr, sizeof(lenstr), "%c%ld\r\n", prefix, length);
+    setDeferredReply(c, node, lenstr, lenstr_len);
+}
 
 // void setDeferredArrayLen(client *c, void *node, long length) {
 //     setDeferredAggregateLen(c,node,length,'*');
 // }
 
-// void setDeferredMapLen(client *c, void *node, long length) {
-//     int prefix = c->resp == 2 ? '*' : '%';
-//     if (c->resp == 2) length *= 2;
-//     setDeferredAggregateLen(c,node,length,prefix);
-// }
+void setDeferredMapLen(client *c, void *node, long length) {
+    int prefix = c->resp == 2 ? '*' : '%';
+    if (c->resp == 2) length *= 2;
+    setDeferredAggregateLen(c,node,length,prefix);
+}
 
 // void setDeferredSetLen(client *c, void *node, long length) {
 //     int prefix = c->resp == 2 ? '*' : '~';
@@ -944,52 +944,52 @@ void addReplyLongLongWithPrefix(client *c, long long ll, char prefix) {
     addReplyProto(c,buf,len+3);
 }
 
-// void addReplyLongLong(client *c, long long ll) {
-//     if (ll == 0)
-//         addReply(c,shared.czero);
-//     else if (ll == 1)
-//         addReply(c,shared.cone);
-//     else
-//         addReplyLongLongWithPrefix(c,ll,':');
-// }
+void addReplyLongLong(client *c, long long ll) {
+    if (ll == 0)
+        addReply(c,shared.czero);
+    else if (ll == 1)
+        addReply(c,shared.cone);
+    else
+        addReplyLongLongWithPrefix(c,ll,':');
+}
 
-// void addReplyAggregateLen(client *c, long length, int prefix) {
-//     serverAssert(length >= 0);
-//     addReplyLongLongWithPrefix(c,length,prefix);
-// }
+void addReplyAggregateLen(client *c, long length, int prefix) {
+    serverAssert(length >= 0);
+    addReplyLongLongWithPrefix(c,length,prefix);
+}
 
-// void addReplyArrayLen(client *c, long length) {
-//     addReplyAggregateLen(c,length,'*');
-// }
+void addReplyArrayLen(client *c, long length) {
+    addReplyAggregateLen(c,length,'*');
+}
 
-// void addReplyMapLen(client *c, long length) {
-//     int prefix = c->resp == 2 ? '*' : '%';
-//     if (c->resp == 2) length *= 2;
-//     addReplyAggregateLen(c,length,prefix);
-// }
+void addReplyMapLen(client *c, long length) {
+    int prefix = c->resp == 2 ? '*' : '%';
+    if (c->resp == 2) length *= 2;
+    addReplyAggregateLen(c,length,prefix);
+}
 
-// void addReplySetLen(client *c, long length) {
-//     int prefix = c->resp == 2 ? '*' : '~';
-//     addReplyAggregateLen(c,length,prefix);
-// }
+void addReplySetLen(client *c, long length) {
+    int prefix = c->resp == 2 ? '*' : '~';
+    addReplyAggregateLen(c,length,prefix);
+}
 
 // void addReplyAttributeLen(client *c, long length) {
 //     serverAssert(c->resp >= 3);
 //     addReplyAggregateLen(c,length,'|');
 // }
 
-// void addReplyPushLen(client *c, long length) {
-//     serverAssert(c->resp >= 3);
-//     addReplyAggregateLen(c,length,'>');
-// }
+void addReplyPushLen(client *c, long length) {
+    serverAssert(c->resp >= 3);
+    addReplyAggregateLen(c,length,'>');
+}
 
-// void addReplyNull(client *c) {
-//     if (c->resp == 2) {
-//         addReplyProto(c,"$-1\r\n",5);
-//     } else {
-//         addReplyProto(c,"_\r\n",3);
-//     }
-// }
+void addReplyNull(client *c) {
+    if (c->resp == 2) {
+        addReplyProto(c,"$-1\r\n",5);
+    } else {
+        addReplyProto(c,"_\r\n",3);
+    }
+}
 
 // void addReplyBool(client *c, int b) {
 //     if (c->resp == 2) {
@@ -1048,13 +1048,13 @@ void addReplyBulkCBuffer(client *c, const void *p, size_t len) {
 // }
 
 // /* Add a C null term string as bulk reply */
-// void addReplyBulkCString(client *c, const char *s) {
-//     if (s == NULL) {
-//         addReplyNull(c);
-//     } else {
-//         addReplyBulkCBuffer(c,s,strlen(s));
-//     }
-// }
+void addReplyBulkCString(client *c, const char *s) {
+    if (s == NULL) {
+        addReplyNull(c);
+    } else {
+        addReplyBulkCBuffer(c,s,strlen(s));
+    }
+}
 
 // /* Add a long long as a bulk reply */
 // void addReplyBulkLongLong(client *c, long long ll) {

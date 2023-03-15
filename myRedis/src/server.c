@@ -2923,6 +2923,307 @@ int createSocketAcceptHandler(connListener *sfd, aeFileProc *accept_handler) {
     return C_OK;
 }
 
+
+typedef struct replyFlagNames {
+    uint64_t flag;
+    const char *name;
+} replyFlagNames;
+/* Helper function to output flags. */
+void addReplyCommandFlags(client *c, uint64_t flags, replyFlagNames *replyFlags) {
+    int count = 0, j=0;
+    /* Count them so we don't have to use deferred reply. */
+    while (replyFlags[j].name) {
+        if (flags & replyFlags[j].flag)
+            count++;
+        j++;
+    }
+
+    addReplySetLen(c, count);
+    j = 0;
+    while (replyFlags[j].name) {
+        if (flags & replyFlags[j].flag)
+            addReplyStatus(c, replyFlags[j].name);
+        j++;
+    }
+}
+
+void addReplyFlagsForCommand(client *c, struct redisCommand *cmd) {
+    replyFlagNames flagNames[] = {
+        {CMD_WRITE,             "write"},
+        {CMD_READONLY,          "readonly"},
+        {CMD_DENYOOM,           "denyoom"},
+        {CMD_MODULE,            "module"},
+        {CMD_ADMIN,             "admin"},
+        {CMD_PUBSUB,            "pubsub"},
+        {CMD_NOSCRIPT,          "noscript"},
+        {CMD_BLOCKING,          "blocking"},
+        {CMD_LOADING,           "loading"},
+        {CMD_STALE,             "stale"},
+        {CMD_SKIP_MONITOR,      "skip_monitor"},
+        {CMD_SKIP_SLOWLOG,      "skip_slowlog"},
+        {CMD_ASKING,            "asking"},
+        {CMD_FAST,              "fast"},
+        {CMD_NO_AUTH,           "no_auth"},
+        /* {CMD_MAY_REPLICATE,     "may_replicate"},, Hidden on purpose */
+        /* {CMD_SENTINEL,          "sentinel"}, Hidden on purpose */
+        /* {CMD_ONLY_SENTINEL,     "only_sentinel"}, Hidden on purpose */
+        {CMD_NO_MANDATORY_KEYS, "no_mandatory_keys"},
+        /* {CMD_PROTECTED,         "protected"}, Hidden on purpose */
+        {CMD_NO_ASYNC_LOADING,  "no_async_loading"},
+        {CMD_NO_MULTI,          "no_multi"},
+        {CMD_MOVABLE_KEYS,      "movablekeys"},
+        {CMD_ALLOW_BUSY,        "allow_busy"},
+        {0,NULL}
+    };
+    addReplyCommandFlags(c, cmd->flags, flagNames);
+}
+
+/* Must match redisCommandArgType */
+const char *ARG_TYPE_STR[] = {
+    "string",
+    "integer",
+    "double",
+    "key",
+    "pattern",
+    "unix-time",
+    "pure-token",
+    "oneof",
+    "block",
+};
+
+/* Must match redisCommandGroup */
+const char *COMMAND_GROUP_STR[] = {
+    "generic",
+    "string",
+    "list",
+    "set",
+    "sorted-set",
+    "hash",
+    "pubsub",
+    "transactions",
+    "connection",
+    "server",
+    "scripting",
+    "hyperloglog",
+    "cluster",
+    "sentinel",
+    "geo",
+    "stream",
+    "bitmap",
+    "module"
+};
+
+void addReplyFlagsForArg(client *c, uint64_t flags) {
+    replyFlagNames argFlagNames[] = {
+        {CMD_ARG_OPTIONAL,          "optional"},
+        {CMD_ARG_MULTIPLE,          "multiple"},
+        {CMD_ARG_MULTIPLE_TOKEN,    "multiple_token"},
+        {0,NULL}
+    };
+    addReplyCommandFlags(c, flags, argFlagNames);
+}
+
+void addReplyCommandTips(client *c, struct redisCommand *cmd) {
+    addReplySetLen(c, cmd->num_tips);
+    for (int j = 0; j<cmd->num_tips; j++) {
+        addReplyBulkCString(c, cmd->tips[j]);
+    }
+}
+
+/* Output the representation of a Redis command. Used by the COMMAND command and COMMAND INFO. */
+void addReplyCommandInfo(client *c, struct redisCommand *cmd) {
+    if (!cmd) {
+        addReplyNull(c);
+    } else {
+        int firstkey = 0, lastkey = 0, keystep = 0;
+        if (cmd->legacy_range_key_spec.begin_search_type != KSPEC_BS_INVALID) {
+            firstkey = cmd->legacy_range_key_spec.bs.index.pos;
+            lastkey = cmd->legacy_range_key_spec.fk.range.lastkey;
+            if (lastkey >= 0)
+                lastkey += firstkey;
+            keystep = cmd->legacy_range_key_spec.fk.range.keystep;
+        }
+
+        addReplyArrayLen(c, 10);
+        addReplyBulkCBuffer(c, cmd->fullname, sdslen(cmd->fullname));
+        addReplyLongLong(c, cmd->arity);
+        addReplyFlagsForCommand(c, cmd);
+        addReplyLongLong(c, firstkey);
+        addReplyLongLong(c, lastkey);
+        addReplyLongLong(c, keystep);
+        // addReplyCommandCategories(c, cmd); //debug michael
+        addReplyCommandTips(c, cmd);
+        // addReplyCommandKeySpecs(c, cmd); //debug michael
+        // addReplyCommandSubCommands(c, cmd, addReplyCommandInfo, 0); //debug michael
+    }
+}
+
+void addReplyCommandArgList(client *c, struct redisCommandArg *args, int num_args) {
+    addReplyArrayLen(c, num_args);
+    for (int j = 0; j<num_args; j++) {
+        /* Count our reply len so we don't have to use deferred reply. */
+        int has_display_text = 1;
+        long maplen = 2;
+        if (args[j].key_spec_index != -1) maplen++;
+        if (args[j].token) maplen++;
+        if (args[j].summary) maplen++;
+        if (args[j].since) maplen++;
+        if (args[j].deprecated_since) maplen++;
+        if (args[j].flags) maplen++;
+        if (args[j].type == ARG_TYPE_ONEOF || args[j].type == ARG_TYPE_BLOCK) {
+            has_display_text = 0;
+            maplen++;
+        }
+        if (has_display_text) maplen++;
+        addReplyMapLen(c, maplen);
+
+        addReplyBulkCString(c, "name");
+        addReplyBulkCString(c, args[j].name);
+
+        addReplyBulkCString(c, "type");
+        addReplyBulkCString(c, ARG_TYPE_STR[args[j].type]);
+
+        if (has_display_text) {
+            addReplyBulkCString(c, "display_text");
+            addReplyBulkCString(c, args[j].display_text ? args[j].display_text : args[j].name);
+        }
+        if (args[j].key_spec_index != -1) {
+            addReplyBulkCString(c, "key_spec_index");
+            addReplyLongLong(c, args[j].key_spec_index);
+        }
+        if (args[j].token) {
+            addReplyBulkCString(c, "token");
+            addReplyBulkCString(c, args[j].token);
+        }
+        if (args[j].summary) {
+            addReplyBulkCString(c, "summary");
+            addReplyBulkCString(c, args[j].summary);
+        }
+        if (args[j].since) {
+            addReplyBulkCString(c, "since");
+            addReplyBulkCString(c, args[j].since);
+        }
+        if (args[j].deprecated_since) {
+            addReplyBulkCString(c, "deprecated_since");
+            addReplyBulkCString(c, args[j].deprecated_since);
+        }
+        if (args[j].flags) {
+            addReplyBulkCString(c, "flags");
+            addReplyFlagsForArg(c, args[j].flags);
+        }
+        if (args[j].type == ARG_TYPE_ONEOF || args[j].type == ARG_TYPE_BLOCK) {
+            addReplyBulkCString(c, "arguments");
+            addReplyCommandArgList(c, args[j].subargs, args[j].num_args);
+        }
+    }
+}
+
+
+void addReplyCommandDocs(client *c, struct redisCommand *cmd) {
+    /* Count our reply len so we don't have to use deferred reply. */
+    long maplen = 1;
+    if (cmd->summary) maplen++;
+    if (cmd->since) maplen++;
+    if (cmd->flags & CMD_MODULE) maplen++;
+    if (cmd->complexity) maplen++;
+    if (cmd->doc_flags) maplen++;
+    if (cmd->deprecated_since) maplen++;
+    if (cmd->replaced_by) maplen++;
+    if (cmd->history) maplen++;
+    if (cmd->args) maplen++;
+    if (cmd->subcommands_dict) maplen++;
+    addReplyMapLen(c, maplen);
+
+    if (cmd->summary) {
+        addReplyBulkCString(c, "summary");
+        addReplyBulkCString(c, cmd->summary);
+    }
+    if (cmd->since) {
+        addReplyBulkCString(c, "since");
+        addReplyBulkCString(c, cmd->since);
+    }
+
+    /* Always have the group, for module commands the group is always "module". */
+    addReplyBulkCString(c, "group");
+    addReplyBulkCString(c, COMMAND_GROUP_STR[cmd->group]);
+
+    if (cmd->complexity) {
+        addReplyBulkCString(c, "complexity");
+        addReplyBulkCString(c, cmd->complexity);
+    }
+    if (cmd->flags & CMD_MODULE) {
+        addReplyBulkCString(c, "module");
+        // addReplyBulkCString(c, moduleNameFromCommand(cmd)); //debug michael
+    }
+    if (cmd->doc_flags) {
+        addReplyBulkCString(c, "doc_flags");
+        // addReplyDocFlagsForCommand(c, cmd);//debug michael
+    }
+    if (cmd->deprecated_since) {
+        addReplyBulkCString(c, "deprecated_since");
+        addReplyBulkCString(c, cmd->deprecated_since);
+    }
+    if (cmd->replaced_by) {
+        addReplyBulkCString(c, "replaced_by");
+        addReplyBulkCString(c, cmd->replaced_by);
+    }
+    if (cmd->history) {
+        addReplyBulkCString(c, "history");
+        // addReplyCommandHistory(c, cmd);//debug michael
+    }
+    if (cmd->args) {
+        addReplyBulkCString(c, "arguments");
+        addReplyCommandArgList(c, cmd->args, cmd->num_args);
+    }
+    if (cmd->subcommands_dict) {
+        addReplyBulkCString(c, "subcommands");
+        // addReplyCommandSubCommands(c, cmd, addReplyCommandDocs, 1); //debug michael
+    }
+}
+
+void commandDocsCommand(client *c) {
+    int i;
+    if (c->argc == 2) {
+        /* Reply with an array of all commands */
+        dictIterator *di;
+        dictEntry *de;
+        addReplyMapLen(c, dictSize(server.commands));
+        di = dictGetIterator(server.commands);
+        while ((de = dictNext(di)) != NULL) {
+            struct redisCommand *cmd = dictGetVal(de);
+            addReplyBulkCBuffer(c, cmd->fullname, sdslen(cmd->fullname));
+            addReplyCommandDocs(c, cmd);
+        }
+        dictReleaseIterator(di);
+    } else {
+        /* Reply with an array of the requested commands (if we find them) */
+        int numcmds = 0;
+        void *replylen = addReplyDeferredLen(c);
+        for (i = 2; i < c->argc; i++) {
+            struct redisCommand *cmd = lookupCommandBySds(c->argv[i]->ptr);
+            if (!cmd)
+                continue;
+            addReplyBulkCBuffer(c, cmd->fullname, sdslen(cmd->fullname));
+            addReplyCommandDocs(c, cmd);
+            numcmds++;
+        }
+        setDeferredMapLen(c,replylen,numcmds);
+    }
+}
+
+/* COMMAND (no args) */
+void commandCommand(client *c) {
+    dictIterator *di;
+    dictEntry *de;
+
+    addReplyArrayLen(c, dictSize(server.commands));
+    di = dictGetIterator(server.commands);
+    while ((de = dictNext(di)) != NULL) {
+        addReplyCommandInfo(c, dictGetVal(de));
+    }
+    dictReleaseIterator(di);
+}
+
 void initListeners() {
     /* Setup listeners from server config for TCP/TLS/Unix */
     int conn_index;
@@ -3061,8 +3362,7 @@ int listenToPort(connListener *sfd) {
 
 # pragma endregion
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv){
     struct timeval tv;
     int j;
     char config_from_stdin = 0;

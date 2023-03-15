@@ -6,14 +6,6 @@
  * the fantastic
  * Redis Command Table! */
 
-/********** CLIENT ********************/
-
-/* CLIENT history */
-#define CLIENT_History NULL
-
-/* CLIENT tips */
-#define CLIENT_tips NULL
-
 /********** PING ********************/
 
 /* PING history */
@@ -32,10 +24,45 @@ struct redisCommandArg PING_Args[] = {
 {0}
 };
 
+/********** COMMAND DOCS ********************/
+
+/* COMMAND DOCS history */
+#define COMMAND_DOCS_History NULL
+
+/* COMMAND DOCS tips */
+const char *COMMAND_DOCS_tips[] = {
+"nondeterministic_output_order",
+NULL
+};
+
+/* COMMAND DOCS argument table */
+struct redisCommandArg COMMAND_DOCS_Args[] = {
+{"command-name",ARG_TYPE_STRING,-1,NULL,NULL,NULL,CMD_ARG_OPTIONAL|CMD_ARG_MULTIPLE},
+{0}
+};
+
+/* COMMAND command table */
+struct redisCommand COMMAND_Subcommands[] = {
+{"docs","Get array of specific Redis command documentation","O(N) where N is the number of commands to look up","7.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_SERVER,COMMAND_DOCS_History,COMMAND_DOCS_tips,commandDocsCommand,-2,CMD_LOADING|CMD_STALE|CMD_SENTINEL,ACL_CATEGORY_CONNECTION,.args=COMMAND_DOCS_Args},
+{0}
+};
+
+/********** COMMAND ********************/
+
+/* COMMAND history */
+#define COMMAND_History NULL
+
+/* COMMAND tips */
+const char *COMMAND_tips[] = {
+"nondeterministic_output_order",
+NULL
+};
+
 /* Main command table */
 struct redisCommand redisCommandTable[] = {
 /* connection */
-{"client","A container for client connection commands","Depends on subcommand.","2.4.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_CONNECTION,CLIENT_History,CLIENT_tips,NULL,-2,CMD_SENTINEL,0},
 {"ping","Ping the server","O(1)","1.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_CONNECTION,PING_History,PING_tips,pingCommand,-1,CMD_FAST|CMD_SENTINEL,ACL_CATEGORY_CONNECTION,.args=PING_Args},
+/* server */
+{"command","Get array of Redis command details","O(N) where N is the total number of Redis commands","2.8.13",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_SERVER,COMMAND_History,COMMAND_tips,commandCommand,-1,CMD_LOADING|CMD_STALE|CMD_SENTINEL,ACL_CATEGORY_CONNECTION,.subcommands=COMMAND_Subcommands},
 {0}
 };

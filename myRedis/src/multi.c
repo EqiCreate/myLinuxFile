@@ -145,115 +145,116 @@
 //     replicationFeedMonitors(c,server.monitors,c->db->id,c->argv,c->argc);
 // }
 
-// void execCommand(client *c) {
-//     int j;
-//     robj **orig_argv;
-//     int orig_argc, orig_argv_len;
-//     struct redisCommand *orig_cmd;
+void execCommand(client *c) {
+    int j;
+    robj **orig_argv;
+    int orig_argc, orig_argv_len;
+    struct redisCommand *orig_cmd;
 
-//     if (!(c->flags & CLIENT_MULTI)) {
-//         addReplyError(c,"EXEC without MULTI");
-//         return;
-//     }
+    if (!(c->flags & CLIENT_MULTI)) {
+        addReplyError(c,"EXEC without MULTI");
+        return;
+    }
 
-//     /* EXEC with expired watched key is disallowed*/
-//     if (isWatchedKeyExpired(c)) {
-//         c->flags |= (CLIENT_DIRTY_CAS);
-//     }
+    /* EXEC with expired watched key is disallowed*/
+    if (isWatchedKeyExpired(c)) {
+        c->flags |= (CLIENT_DIRTY_CAS);
+    }
 
-//     /* Check if we need to abort the EXEC because:
-//      * 1) Some WATCHed key was touched.
-//      * 2) There was a previous error while queueing commands.
-//      * A failed EXEC in the first case returns a multi bulk nil object
-//      * (technically it is not an error but a special behavior), while
-//      * in the second an EXECABORT error is returned. */
-//     if (c->flags & (CLIENT_DIRTY_CAS | CLIENT_DIRTY_EXEC)) {
-//         if (c->flags & CLIENT_DIRTY_EXEC) {
-//             addReplyErrorObject(c, shared.execaborterr);
-//         } else {
-//             addReply(c, shared.nullarray[c->resp]);
-//         }
+    /* Check if we need to abort the EXEC because:
+     * 1) Some WATCHed key was touched.
+     * 2) There was a previous error while queueing commands.
+     * A failed EXEC in the first case returns a multi bulk nil object
+     * (technically it is not an error but a special behavior), while
+     * in the second an EXECABORT error is returned. */
+    if (c->flags & (CLIENT_DIRTY_CAS | CLIENT_DIRTY_EXEC)) {
+        if (c->flags & CLIENT_DIRTY_EXEC) {
+            addReplyErrorObject(c, shared.execaborterr);
+        } else {
+            addReply(c, shared.nullarray[c->resp]);
+        }
 
-//         discardTransaction(c);
-//         return;
-//     }
+        // discardTransaction(c); //debug michael
+        return;
+    }
 
-//     uint64_t old_flags = c->flags;
+    uint64_t old_flags = c->flags;
 
-//     /* we do not want to allow blocking commands inside multi */
-//     c->flags |= CLIENT_DENY_BLOCKING;
+    /* we do not want to allow blocking commands inside multi */
+    c->flags |= CLIENT_DENY_BLOCKING;
 
-//     /* Exec all the queued commands */
-//     unwatchAllKeys(c); /* Unwatch ASAP otherwise we'll waste CPU cycles */
+    /* Exec all the queued commands */
+    unwatchAllKeys(c); /* Unwatch ASAP otherwise we'll waste CPU cycles */
 
-//     server.in_exec = 1;
+    server.in_exec = 1;
 
-//     orig_argv = c->argv;
-//     orig_argv_len = c->argv_len;
-//     orig_argc = c->argc;
-//     orig_cmd = c->cmd;
-//     addReplyArrayLen(c,c->mstate.count);
-//     for (j = 0; j < c->mstate.count; j++) {
-//         c->argc = c->mstate.commands[j].argc;
-//         c->argv = c->mstate.commands[j].argv;
-//         c->argv_len = c->mstate.commands[j].argv_len;
-//         c->cmd = c->realcmd = c->mstate.commands[j].cmd;
+    orig_argv = c->argv;
+    orig_argv_len = c->argv_len;
+    orig_argc = c->argc;
+    orig_cmd = c->cmd;
+    addReplyArrayLen(c,c->mstate.count);
+    for (j = 0; j < c->mstate.count; j++) {
+        c->argc = c->mstate.commands[j].argc;
+        c->argv = c->mstate.commands[j].argv;
+        c->argv_len = c->mstate.commands[j].argv_len;
+        c->cmd = c->realcmd = c->mstate.commands[j].cmd;
 
-//         /* ACL permissions are also checked at the time of execution in case
-//          * they were changed after the commands were queued. */
-//         int acl_errpos;
-//         int acl_retval = ACLCheckAllPerm(c,&acl_errpos);
-//         if (acl_retval != ACL_OK) {
-//             char *reason;
-//             switch (acl_retval) {
-//             case ACL_DENIED_CMD:
-//                 reason = "no permission to execute the command or subcommand";
-//                 break;
-//             case ACL_DENIED_KEY:
-//                 reason = "no permission to touch the specified keys";
-//                 break;
-//             case ACL_DENIED_CHANNEL:
-//                 reason = "no permission to access one of the channels used "
-//                          "as arguments";
-//                 break;
-//             default:
-//                 reason = "no permission";
-//                 break;
-//             }
-//             addACLLogEntry(c,acl_retval,ACL_LOG_CTX_MULTI,acl_errpos,NULL,NULL);
-//             addReplyErrorFormat(c,
-//                 "-NOPERM ACLs rules changed between the moment the "
-//                 "transaction was accumulated and the EXEC call. "
-//                 "This command is no longer allowed for the "
-//                 "following reason: %s", reason);
-//         } else {
-//             if (c->id == CLIENT_ID_AOF)
-//                 call(c,CMD_CALL_NONE);
-//             else
-//                 call(c,CMD_CALL_FULL);
+        /* ACL permissions are also checked at the time of execution in case
+         * they were changed after the commands were queued. */
+        int acl_errpos;
+        int acl_retval = ACLCheckAllPerm(c,&acl_errpos);
+        if (acl_retval != ACL_OK) {
+            // char *reason;
+            // switch (acl_retval) {
+            // case ACL_DENIED_CMD:
+            //     reason = "no permission to execute the command or subcommand";
+            //     break;
+            // case ACL_DENIED_KEY:
+            //     reason = "no permission to touch the specified keys";
+            //     break;
+            // case ACL_DENIED_CHANNEL:
+            //     reason = "no permission to access one of the channels used "
+            //              "as arguments";
+            //     break;
+            // default:
+            //     reason = "no permission";
+            //     break;
+            // }
+            // addACLLogEntry(c,acl_retval,ACL_LOG_CTX_MULTI,acl_errpos,NULL,NULL);
+            // addReplyErrorFormat(c,
+            //     "-NOPERM ACLs rules changed between the moment the "
+            //     "transaction was accumulated and the EXEC call. "
+            //     "This command is no longer allowed for the "
+            //     "following reason: %s", reason); //debug michael
+        }
+         else {
+            if (c->id == CLIENT_ID_AOF)
+                call(c,CMD_CALL_NONE);
+            else
+                call(c,CMD_CALL_FULL);
 
-//             serverAssert((c->flags & CLIENT_BLOCKED) == 0);
-//         }
+            serverAssert((c->flags & CLIENT_BLOCKED) == 0);
+        }
 
-//         /* Commands may alter argc/argv, restore mstate. */
-//         c->mstate.commands[j].argc = c->argc;
-//         c->mstate.commands[j].argv = c->argv;
-//         c->mstate.commands[j].argv_len = c->argv_len;
-//         c->mstate.commands[j].cmd = c->cmd;
-//     }
+        /* Commands may alter argc/argv, restore mstate. */
+        c->mstate.commands[j].argc = c->argc;
+        c->mstate.commands[j].argv = c->argv;
+        c->mstate.commands[j].argv_len = c->argv_len;
+        c->mstate.commands[j].cmd = c->cmd;
+    }
 
-//     // restore old DENY_BLOCKING value
-//     if (!(old_flags & CLIENT_DENY_BLOCKING))
-//         c->flags &= ~CLIENT_DENY_BLOCKING;
+    // restore old DENY_BLOCKING value
+    if (!(old_flags & CLIENT_DENY_BLOCKING))
+        c->flags &= ~CLIENT_DENY_BLOCKING;
 
-//     c->argv = orig_argv;
-//     c->argv_len = orig_argv_len;
-//     c->argc = orig_argc;
-//     c->cmd = c->realcmd = orig_cmd;
-//     discardTransaction(c);
+    c->argv = orig_argv;
+    c->argv_len = orig_argv_len;
+    c->argc = orig_argc;
+    c->cmd = c->realcmd = orig_cmd;
+    // discardTransaction(c); //debug michael
 
-//     server.in_exec = 0;
-// }
+    server.in_exec = 0;
+}
 
 // /* ===================== WATCH (CAS alike for MULTI/EXEC) ===================
 //  *
@@ -268,12 +269,12 @@
 //  * as in order to identify a key in Redis we need both the key name and the
 //  * DB. This struct is also referenced from db->watched_keys dict, where the
 //  * values are lists of watchedKey pointers. */
-// typedef struct watchedKey {
-//     robj *key;
-//     redisDb *db;
-//     client *client;
-//     unsigned expired:1; /* Flag that we're watching an already expired key. */
-// } watchedKey;
+typedef struct watchedKey {
+    robj *key;
+    redisDb *db;
+    client *client;
+    unsigned expired:1; /* Flag that we're watching an already expired key. */
+} watchedKey;
 
 // /* Watch for the specified key */
 // void watchForKey(client *c, robj *key) {
@@ -309,48 +310,48 @@
 
 // /* Unwatch all the keys watched by this client. To clean the EXEC dirty
 //  * flag is up to the caller. */
-// void unwatchAllKeys(client *c) {
-//     listIter li;
-//     listNode *ln;
+void unwatchAllKeys(client *c) {
+    listIter li;
+    listNode *ln;
 
-//     if (listLength(c->watched_keys) == 0) return;
-//     listRewind(c->watched_keys,&li);
-//     while((ln = listNext(&li))) {
-//         list *clients;
-//         watchedKey *wk;
+    if (listLength(c->watched_keys) == 0) return;
+    listRewind(c->watched_keys,&li);
+    while((ln = listNext(&li))) {
+        list *clients;
+        watchedKey *wk;
 
-//         /* Lookup the watched key -> clients list and remove the client's wk
-//          * from the list */
-//         wk = listNodeValue(ln);
-//         clients = dictFetchValue(wk->db->watched_keys, wk->key);
-//         serverAssertWithInfo(c,NULL,clients != NULL);
-//         listDelNode(clients,listSearchKey(clients,wk));
-//         /* Kill the entry at all if this was the only client */
-//         if (listLength(clients) == 0)
-//             dictDelete(wk->db->watched_keys, wk->key);
-//         /* Remove this watched key from the client->watched list */
-//         listDelNode(c->watched_keys,ln);
-//         decrRefCount(wk->key);
-//         zfree(wk);
-//     }
-// }
+        /* Lookup the watched key -> clients list and remove the client's wk
+         * from the list */
+        wk = listNodeValue(ln);
+        clients = dictFetchValue(wk->db->watched_keys, wk->key);
+        serverAssertWithInfo(c,NULL,clients != NULL);
+        listDelNode(clients,listSearchKey(clients,wk));
+        /* Kill the entry at all if this was the only client */
+        if (listLength(clients) == 0)
+            dictDelete(wk->db->watched_keys, wk->key);
+        /* Remove this watched key from the client->watched list */
+        listDelNode(c->watched_keys,ln);
+        decrRefCount(wk->key);
+        zfree(wk);
+    }
+}
 
 // /* Iterates over the watched_keys list and looks for an expired key. Keys which
 //  * were expired already when WATCH was called are ignored. */
-// int isWatchedKeyExpired(client *c) {
-//     listIter li;
-//     listNode *ln;
-//     watchedKey *wk;
-//     if (listLength(c->watched_keys) == 0) return 0;
-//     listRewind(c->watched_keys,&li);
-//     while ((ln = listNext(&li))) {
-//         wk = listNodeValue(ln);
-//         if (wk->expired) continue; /* was expired when WATCH was called */
-//         if (keyIsExpired(wk->db, wk->key)) return 1;
-//     }
+int isWatchedKeyExpired(client *c) {
+    listIter li;
+    listNode *ln;
+    watchedKey *wk;
+    if (listLength(c->watched_keys) == 0) return 0;
+    listRewind(c->watched_keys,&li);
+    while ((ln = listNext(&li))) {
+        wk = listNodeValue(ln);
+        if (wk->expired) continue; /* was expired when WATCH was called */
+        // if (keyIsExpired(wk->db, wk->key)) return 1; //debug michael
+    }
 
-//     return 0;
-// }
+    return 0;
+}
 
 // /* "Touch" a key, so that if this key is being WATCHed by some client the
 //  * next EXEC will fail. */
