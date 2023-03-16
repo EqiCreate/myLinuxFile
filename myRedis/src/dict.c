@@ -607,12 +607,12 @@ dictIterator *dictGetIterator(dict *d)
     return iter;
 }
 
-// dictIterator *dictGetSafeIterator(dict *d) {
-//     dictIterator *i = dictGetIterator(d);
+dictIterator *dictGetSafeIterator(dict *d) {
+    dictIterator *i = dictGetIterator(d);
 
-//     i->safe = 1;
-//     return i;
-// }
+    i->safe = 1;
+    return i;
+}
 
 dictEntry *dictNext(dictIterator *iter)
 {

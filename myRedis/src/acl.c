@@ -57,33 +57,33 @@ user *DefaultUser;  /* Global reference to the default user.
 
 static unsigned long nextid = 0; /* Next command id that has not been assigned */
 
-// struct ACLCategoryItem {
-//     const char *name;
-//     uint64_t flag;
-// } ACLCommandCategories[] = { /* See redis.conf for details on each category. */
-//     {"keyspace", ACL_CATEGORY_KEYSPACE},
-//     {"read", ACL_CATEGORY_READ},
-//     {"write", ACL_CATEGORY_WRITE},
-//     {"set", ACL_CATEGORY_SET},
-//     {"sortedset", ACL_CATEGORY_SORTEDSET},
-//     {"list", ACL_CATEGORY_LIST},
-//     {"hash", ACL_CATEGORY_HASH},
-//     {"string", ACL_CATEGORY_STRING},
-//     {"bitmap", ACL_CATEGORY_BITMAP},
-//     {"hyperloglog", ACL_CATEGORY_HYPERLOGLOG},
-//     {"geo", ACL_CATEGORY_GEO},
-//     {"stream", ACL_CATEGORY_STREAM},
-//     {"pubsub", ACL_CATEGORY_PUBSUB},
-//     {"admin", ACL_CATEGORY_ADMIN},
-//     {"fast", ACL_CATEGORY_FAST},
-//     {"slow", ACL_CATEGORY_SLOW},
-//     {"blocking", ACL_CATEGORY_BLOCKING},
-//     {"dangerous", ACL_CATEGORY_DANGEROUS},
-//     {"connection", ACL_CATEGORY_CONNECTION},
-//     {"transaction", ACL_CATEGORY_TRANSACTION},
-//     {"scripting", ACL_CATEGORY_SCRIPTING},
-//     {NULL,0} /* Terminator. */
-// };
+struct ACLCategoryItem {
+    const char *name;
+    uint64_t flag;
+} ACLCommandCategories[] = { /* See redis.conf for details on each category. */
+    {"keyspace", ACL_CATEGORY_KEYSPACE},
+    {"read", ACL_CATEGORY_READ},
+    {"write", ACL_CATEGORY_WRITE},
+    {"set", ACL_CATEGORY_SET},
+    {"sortedset", ACL_CATEGORY_SORTEDSET},
+    {"list", ACL_CATEGORY_LIST},
+    {"hash", ACL_CATEGORY_HASH},
+    {"string", ACL_CATEGORY_STRING},
+    {"bitmap", ACL_CATEGORY_BITMAP},
+    {"hyperloglog", ACL_CATEGORY_HYPERLOGLOG},
+    {"geo", ACL_CATEGORY_GEO},
+    {"stream", ACL_CATEGORY_STREAM},
+    {"pubsub", ACL_CATEGORY_PUBSUB},
+    {"admin", ACL_CATEGORY_ADMIN},
+    {"fast", ACL_CATEGORY_FAST},
+    {"slow", ACL_CATEGORY_SLOW},
+    {"blocking", ACL_CATEGORY_BLOCKING},
+    {"dangerous", ACL_CATEGORY_DANGEROUS},
+    {"connection", ACL_CATEGORY_CONNECTION},
+    {"transaction", ACL_CATEGORY_TRANSACTION},
+    {"scripting", ACL_CATEGORY_SCRIPTING},
+    {NULL,0} /* Terminator. */
+};
 
 // struct ACLUserFlag {
 //     const char *name;
@@ -2987,17 +2987,17 @@ int ACLAppendUserForLoading(sds *argv, int argc, int *argc_err) {
 //     }
 // }
 
-// void addReplyCommandCategories(client *c, struct redisCommand *cmd) {
-//     int flagcount = 0;
-//     void *flaglen = addReplyDeferredLen(c);
-//     for (int j = 0; ACLCommandCategories[j].flag != 0; j++) {
-//         if (cmd->acl_categories & ACLCommandCategories[j].flag) {
-//             addReplyStatusFormat(c, "@%s", ACLCommandCategories[j].name);
-//             flagcount++;
-//         }
-//     }
-//     setDeferredSetLen(c, flaglen, flagcount);
-// }
+void addReplyCommandCategories(client *c, struct redisCommand *cmd) {
+    int flagcount = 0;
+    void *flaglen = addReplyDeferredLen(c);
+    for (int j = 0; ACLCommandCategories[j].flag != 0; j++) {
+        if (cmd->acl_categories & ACLCommandCategories[j].flag) {
+            addReplyStatusFormat(c, "@%s", ACLCommandCategories[j].name);
+            flagcount++;
+        }
+    }
+    setDeferredSetLen(c, flaglen, flagcount);
+}
 
 // /* AUTH <password>
 //  * AUTH <username> <password> (Redis >= 6.0 form)

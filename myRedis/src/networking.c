@@ -663,14 +663,14 @@ void addReplyStatus(client *c, const char *status) {
     addReplyStatusLength(c,status,strlen(status));
 }
 
-// void addReplyStatusFormat(client *c, const char *fmt, ...) {
-//     va_list ap;
-//     va_start(ap,fmt);
-//     sds s = sdscatvprintf(sdsempty(),fmt,ap);
-//     va_end(ap);
-//     addReplyStatusLength(c,s,sdslen(s));
-//     sdsfree(s);
-// }
+void addReplyStatusFormat(client *c, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap,fmt);
+    sds s = sdscatvprintf(sdsempty(),fmt,ap);
+    va_end(ap);
+    addReplyStatusLength(c,s,sdslen(s));
+    sdsfree(s);
+}
 
 // /* Sometimes we are forced to create a new reply node, and we can't append to
 //  * the previous one, when that happens, we wanna try to trim the unused space
@@ -823,10 +823,10 @@ void setDeferredMapLen(client *c, void *node, long length) {
     setDeferredAggregateLen(c,node,length,prefix);
 }
 
-// void setDeferredSetLen(client *c, void *node, long length) {
-//     int prefix = c->resp == 2 ? '*' : '~';
-//     setDeferredAggregateLen(c,node,length,prefix);
-// }
+void setDeferredSetLen(client *c, void *node, long length) {
+    int prefix = c->resp == 2 ? '*' : '~';
+    setDeferredAggregateLen(c,node,length,prefix);
+}
 
 // void setDeferredAttributeLen(client *c, void *node, long length) {
 //     serverAssert(c->resp >= 3);
@@ -1736,24 +1736,24 @@ int beforeNextClient(client *c) {
 
 // /* Free the clients marked as CLOSE_ASAP, return the number of clients
 //  * freed. */
-// int freeClientsInAsyncFreeQueue(void) {
-//     int freed = 0;
-//     listIter li;
-//     listNode *ln;
+int freeClientsInAsyncFreeQueue(void) {
+    int freed = 0;
+    listIter li;
+    listNode *ln;
 
-//     listRewind(server.clients_to_close,&li);
-//     while ((ln = listNext(&li)) != NULL) {
-//         client *c = listNodeValue(ln);
+    listRewind(server.clients_to_close,&li);
+    while ((ln = listNext(&li)) != NULL) {
+        client *c = listNodeValue(ln);
 
-//         if (c->flags & CLIENT_PROTECTED) continue;
+        if (c->flags & CLIENT_PROTECTED) continue;
 
-//         c->flags &= ~CLIENT_CLOSE_ASAP;
-//         freeClient(c);
-//         listDelNode(server.clients_to_close,ln);
-//         freed++;
-//     }
-//     return freed;
-// }
+        c->flags &= ~CLIENT_CLOSE_ASAP;
+        freeClient(c);
+        listDelNode(server.clients_to_close,ln);
+        freed++;
+    }
+    return freed;
+}
 
 // /* Return a client by ID, or NULL if the client ID is not in the set
 //  * of registered clients. Note that "fake clients", created with -1 as FD,
@@ -1770,130 +1770,130 @@ client *lookupClientByID(uint64_t id) {
 //  * If we write successfully, it returns C_OK, otherwise, C_ERR is returned,
 //  * and 'nwritten' is an output parameter, it means how many bytes server write
 //  * to client. */
-// static int _writevToClient(client *c, ssize_t *nwritten) {
-//     struct iovec iov[IOV_MAX];
-//     int iovcnt = 0;
-//     size_t iov_bytes_len = 0;
-//     /* If the static reply buffer is not empty, 
-//      * add it to the iov array for writev() as well. */
-//     if (c->bufpos > 0) {
-//         iov[iovcnt].iov_base = c->buf + c->sentlen;
-//         iov[iovcnt].iov_len = c->bufpos - c->sentlen;
-//         iov_bytes_len += iov[iovcnt++].iov_len;
-//     }
-//     /* The first node of reply list might be incomplete from the last call,
-//      * thus it needs to be calibrated to get the actual data address and length. */
-//     size_t offset = c->bufpos > 0 ? 0 : c->sentlen;
-//     listIter iter;
-//     listNode *next;
-//     clientReplyBlock *o;
-//     listRewind(c->reply, &iter);
-//     while ((next = listNext(&iter)) && iovcnt < IOV_MAX && iov_bytes_len < NET_MAX_WRITES_PER_EVENT) {
-//         o = listNodeValue(next);
-//         if (o->used == 0) { /* empty node, just release it and skip. */
-//             c->reply_bytes -= o->size;
-//             listDelNode(c->reply, next);
-//             offset = 0;
-//             continue;
-//         }
+static int _writevToClient(client *c, ssize_t *nwritten) {
+    struct iovec iov[IOV_MAX];
+    int iovcnt = 0;
+    size_t iov_bytes_len = 0;
+    /* If the static reply buffer is not empty, 
+     * add it to the iov array for writev() as well. */
+    if (c->bufpos > 0) {
+        iov[iovcnt].iov_base = c->buf + c->sentlen;
+        iov[iovcnt].iov_len = c->bufpos - c->sentlen;
+        iov_bytes_len += iov[iovcnt++].iov_len;
+    }
+    /* The first node of reply list might be incomplete from the last call,
+     * thus it needs to be calibrated to get the actual data address and length. */
+    size_t offset = c->bufpos > 0 ? 0 : c->sentlen;
+    listIter iter;
+    listNode *next;
+    clientReplyBlock *o;
+    listRewind(c->reply, &iter);
+    while ((next = listNext(&iter)) && iovcnt < IOV_MAX && iov_bytes_len < NET_MAX_WRITES_PER_EVENT) {
+        o = listNodeValue(next);
+        if (o->used == 0) { /* empty node, just release it and skip. */
+            c->reply_bytes -= o->size;
+            listDelNode(c->reply, next);
+            offset = 0;
+            continue;
+        }
 
-//         iov[iovcnt].iov_base = o->buf + offset;
-//         iov[iovcnt].iov_len = o->used - offset;
-//         iov_bytes_len += iov[iovcnt++].iov_len;
-//         offset = 0;
-//     }
-//     if (iovcnt == 0) return C_OK;
-//     *nwritten = connWritev(c->conn, iov, iovcnt);
-//     if (*nwritten <= 0) return C_ERR;
+        iov[iovcnt].iov_base = o->buf + offset;
+        iov[iovcnt].iov_len = o->used - offset;
+        iov_bytes_len += iov[iovcnt++].iov_len;
+        offset = 0;
+    }
+    if (iovcnt == 0) return C_OK;
+    *nwritten = connWritev(c->conn, iov, iovcnt);
+    if (*nwritten <= 0) return C_ERR;
 
-//     /* Locate the new node which has leftover data and
-//      * release all nodes in front of it. */
-//     ssize_t remaining = *nwritten;
-//     if (c->bufpos > 0) { /* deal with static reply buffer first. */
-//         int buf_len = c->bufpos - c->sentlen;
-//         c->sentlen += remaining;
-//         /* If the buffer was sent, set bufpos to zero to continue with
-//          * the remainder of the reply. */
-//         if (remaining >= buf_len) {
-//             c->bufpos = 0;
-//             c->sentlen = 0;
-//         }
-//         remaining -= buf_len;
-//     }
-//     listRewind(c->reply, &iter);
-//     while (remaining > 0) {
-//         next = listNext(&iter);
-//         o = listNodeValue(next);
-//         if (remaining < (ssize_t)(o->used - c->sentlen)) {
-//             c->sentlen += remaining;
-//             break;
-//         }
-//         remaining -= (ssize_t)(o->used - c->sentlen);
-//         c->reply_bytes -= o->size;
-//         listDelNode(c->reply, next);
-//         c->sentlen = 0;
-//     }
+    /* Locate the new node which has leftover data and
+     * release all nodes in front of it. */
+    ssize_t remaining = *nwritten;
+    if (c->bufpos > 0) { /* deal with static reply buffer first. */
+        int buf_len = c->bufpos - c->sentlen;
+        c->sentlen += remaining;
+        /* If the buffer was sent, set bufpos to zero to continue with
+         * the remainder of the reply. */
+        if (remaining >= buf_len) {
+            c->bufpos = 0;
+            c->sentlen = 0;
+        }
+        remaining -= buf_len;
+    }
+    listRewind(c->reply, &iter);
+    while (remaining > 0) {
+        next = listNext(&iter);
+        o = listNodeValue(next);
+        if (remaining < (ssize_t)(o->used - c->sentlen)) {
+            c->sentlen += remaining;
+            break;
+        }
+        remaining -= (ssize_t)(o->used - c->sentlen);
+        c->reply_bytes -= o->size;
+        listDelNode(c->reply, next);
+        c->sentlen = 0;
+    }
 
-//     return C_OK;
-// }
+    return C_OK;
+}
 
 // /* This function does actual writing output buffers to different types of
 //  * clients, it is called by writeToClient.
 //  * If we write successfully, it returns C_OK, otherwise, C_ERR is returned,
 //  * and 'nwritten' is an output parameter, it means how many bytes server write
 //  * to client. */
-// int _writeToClient(client *c, ssize_t *nwritten) {
-//     *nwritten = 0;
-//     if (getClientType(c) == CLIENT_TYPE_SLAVE) {
-//         serverAssert(c->bufpos == 0 && listLength(c->reply) == 0);
+int _writeToClient(client *c, ssize_t *nwritten) {
+    *nwritten = 0;
+    if (getClientType(c) == CLIENT_TYPE_SLAVE) {
+        serverAssert(c->bufpos == 0 && listLength(c->reply) == 0);
 
-//         replBufBlock *o = listNodeValue(c->ref_repl_buf_node);
-//         serverAssert(o->used >= c->ref_block_pos);
-//         /* Send current block if it is not fully sent. */
-//         if (o->used > c->ref_block_pos) {
-//             *nwritten = connWrite(c->conn, o->buf+c->ref_block_pos,
-//                                   o->used-c->ref_block_pos);
-//             if (*nwritten <= 0) return C_ERR;
-//             c->ref_block_pos += *nwritten;
-//         }
+        replBufBlock *o = listNodeValue(c->ref_repl_buf_node);
+        serverAssert(o->used >= c->ref_block_pos);
+        /* Send current block if it is not fully sent. */
+        if (o->used > c->ref_block_pos) {
+            *nwritten = connWrite(c->conn, o->buf+c->ref_block_pos,
+                                  o->used-c->ref_block_pos);
+            if (*nwritten <= 0) return C_ERR;
+            c->ref_block_pos += *nwritten;
+        }
 
-//         /* If we fully sent the object on head, go to the next one. */
-//         listNode *next = listNextNode(c->ref_repl_buf_node);
-//         if (next && c->ref_block_pos == o->used) {
-//             o->refcount--;
-//             ((replBufBlock *)(listNodeValue(next)))->refcount++;
-//             c->ref_repl_buf_node = next;
-//             c->ref_block_pos = 0;
-//             incrementalTrimReplicationBacklog(REPL_BACKLOG_TRIM_BLOCKS_PER_CALL);
-//         }
-//         return C_OK;
-//     }
+        /* If we fully sent the object on head, go to the next one. */
+        listNode *next = listNextNode(c->ref_repl_buf_node);
+        if (next && c->ref_block_pos == o->used) {
+            o->refcount--;
+            ((replBufBlock *)(listNodeValue(next)))->refcount++;
+            c->ref_repl_buf_node = next;
+            c->ref_block_pos = 0;
+            // incrementalTrimReplicationBacklog(REPL_BACKLOG_TRIM_BLOCKS_PER_CALL); //debug michael
+        }
+        return C_OK;
+    }
 
-//     /* When the reply list is not empty, it's better to use writev to save us some
-//      * system calls and TCP packets. */
-//     if (listLength(c->reply) > 0) {
-//         int ret = _writevToClient(c, nwritten);
-//         if (ret != C_OK) return ret;
+    /* When the reply list is not empty, it's better to use writev to save us some
+     * system calls and TCP packets. */
+    if (listLength(c->reply) > 0) {
+        int ret = _writevToClient(c, nwritten);
+        if (ret != C_OK) return ret;
 
-//         /* If there are no longer objects in the list, we expect
-//          * the count of reply bytes to be exactly zero. */
-//         if (listLength(c->reply) == 0)
-//             serverAssert(c->reply_bytes == 0);
-//     } else if (c->bufpos > 0) {
-//         *nwritten = connWrite(c->conn, c->buf + c->sentlen, c->bufpos - c->sentlen);
-//         if (*nwritten <= 0) return C_ERR;
-//         c->sentlen += *nwritten;
+        /* If there are no longer objects in the list, we expect
+         * the count of reply bytes to be exactly zero. */
+        if (listLength(c->reply) == 0)
+            serverAssert(c->reply_bytes == 0);
+    } else if (c->bufpos > 0) {
+        *nwritten = connWrite(c->conn, c->buf + c->sentlen, c->bufpos - c->sentlen);
+        if (*nwritten <= 0) return C_ERR;
+        c->sentlen += *nwritten;
 
-//         /* If the buffer was sent, set bufpos to zero to continue with
-//          * the remainder of the reply. */
-//         if ((int)c->sentlen == c->bufpos) {
-//             c->bufpos = 0;
-//             c->sentlen = 0;
-//         }
-//     } 
+        /* If the buffer was sent, set bufpos to zero to continue with
+         * the remainder of the reply. */
+        if ((int)c->sentlen == c->bufpos) {
+            c->bufpos = 0;
+            c->sentlen = 0;
+        }
+    } 
 
-//     return C_OK;
-// }
+    return C_OK;
+}
 
 // /* Write data in output buffers to client. Return C_OK if the client
 //  * is still valid after the call, C_ERR if it was freed because of some
@@ -1903,79 +1903,79 @@ client *lookupClientByID(uint64_t id) {
 //  * This function is called by threads, but always with handler_installed
 //  * set to 0. So when handler_installed is set to 0 the function must be
 //  * thread safe. */
-// int writeToClient(client *c, int handler_installed) {
-//     /* Update total number of writes on server */
-//     atomicIncr(server.stat_total_writes_processed, 1);
+int writeToClient(client *c, int handler_installed) {
+    /* Update total number of writes on server */
+    atomicIncr(server.stat_total_writes_processed, 1);
 
-//     ssize_t nwritten = 0, totwritten = 0;
+    ssize_t nwritten = 0, totwritten = 0;
 
-//     while(clientHasPendingReplies(c)) {
-//         int ret = _writeToClient(c, &nwritten);
-//         if (ret == C_ERR) break;
-//         totwritten += nwritten;
-//         /* Note that we avoid to send more than NET_MAX_WRITES_PER_EVENT
-//          * bytes, in a single threaded server it's a good idea to serve
-//          * other clients as well, even if a very large request comes from
-//          * super fast link that is always able to accept data (in real world
-//          * scenario think about 'KEYS *' against the loopback interface).
-//          *
-//          * However if we are over the maxmemory limit we ignore that and
-//          * just deliver as much data as it is possible to deliver.
-//          *
-//          * Moreover, we also send as much as possible if the client is
-//          * a slave or a monitor (otherwise, on high-speed traffic, the
-//          * replication/output buffer will grow indefinitely) */
-//         if (totwritten > NET_MAX_WRITES_PER_EVENT &&
-//             (server.maxmemory == 0 ||
-//              zmalloc_used_memory() < server.maxmemory) &&
-//             !(c->flags & CLIENT_SLAVE)) break;
-//     }
+    while(clientHasPendingReplies(c)) {
+        int ret = _writeToClient(c, &nwritten);
+        if (ret == C_ERR) break;
+        totwritten += nwritten;
+        /* Note that we avoid to send more than NET_MAX_WRITES_PER_EVENT
+         * bytes, in a single threaded server it's a good idea to serve
+         * other clients as well, even if a very large request comes from
+         * super fast link that is always able to accept data (in real world
+         * scenario think about 'KEYS *' against the loopback interface).
+         *
+         * However if we are over the maxmemory limit we ignore that and
+         * just deliver as much data as it is possible to deliver.
+         *
+         * Moreover, we also send as much as possible if the client is
+         * a slave or a monitor (otherwise, on high-speed traffic, the
+         * replication/output buffer will grow indefinitely) */
+        if (totwritten > NET_MAX_WRITES_PER_EVENT &&
+            (server.maxmemory == 0 ||
+             zmalloc_used_memory() < server.maxmemory) &&
+            !(c->flags & CLIENT_SLAVE)) break;
+    }
 
-//     if (getClientType(c) == CLIENT_TYPE_SLAVE) {
-//         atomicIncr(server.stat_net_repl_output_bytes, totwritten);
-//     } else {
-//         atomicIncr(server.stat_net_output_bytes, totwritten);
-//     }
+    if (getClientType(c) == CLIENT_TYPE_SLAVE) {
+        atomicIncr(server.stat_net_repl_output_bytes, totwritten);
+    } else {
+        atomicIncr(server.stat_net_output_bytes, totwritten);
+    }
 
-//     if (nwritten == -1) {
-//         if (connGetState(c->conn) != CONN_STATE_CONNECTED) {
-//             serverLog(LL_VERBOSE,
-//                 "Error writing to client: %s", connGetLastError(c->conn));
-//             freeClientAsync(c);
-//             return C_ERR;
-//         }
-//     }
-//     if (totwritten > 0) {
-//         /* For clients representing masters we don't count sending data
-//          * as an interaction, since we always send REPLCONF ACK commands
-//          * that take some time to just fill the socket output buffer.
-//          * We just rely on data / pings received for timeout detection. */
-//         if (!(c->flags & CLIENT_MASTER)) c->lastinteraction = server.unixtime;
-//     }
-//     if (!clientHasPendingReplies(c)) {
-//         c->sentlen = 0;
-//         /* Note that writeToClient() is called in a threaded way, but
-//          * aeDeleteFileEvent() is not thread safe: however writeToClient()
-//          * is always called with handler_installed set to 0 from threads
-//          * so we are fine. */
-//         if (handler_installed) {
-//             serverAssert(io_threads_op == IO_THREADS_OP_IDLE);
-//             connSetWriteHandler(c->conn, NULL);
-//         }
+    if (nwritten == -1) {
+        if (connGetState(c->conn) != CONN_STATE_CONNECTED) {
+            serverLog(LL_VERBOSE,
+                "Error writing to client: %s", connGetLastError(c->conn));
+            freeClientAsync(c);
+            return C_ERR;
+        }
+    }
+    if (totwritten > 0) {
+        /* For clients representing masters we don't count sending data
+         * as an interaction, since we always send REPLCONF ACK commands
+         * that take some time to just fill the socket output buffer.
+         * We just rely on data / pings received for timeout detection. */
+        if (!(c->flags & CLIENT_MASTER)) c->lastinteraction = server.unixtime;
+    }
+    if (!clientHasPendingReplies(c)) {
+        c->sentlen = 0;
+        /* Note that writeToClient() is called in a threaded way, but
+         * aeDeleteFileEvent() is not thread safe: however writeToClient()
+         * is always called with handler_installed set to 0 from threads
+         * so we are fine. */
+        if (handler_installed) {
+            serverAssert(io_threads_op == IO_THREADS_OP_IDLE);
+            connSetWriteHandler(c->conn, NULL);
+        }
 
-//         /* Close connection after entire reply has been sent. */
-//         if (c->flags & CLIENT_CLOSE_AFTER_REPLY) {
-//             freeClientAsync(c);
-//             return C_ERR;
-//         }
-//     }
-//     /* Update client's memory usage after writing.
-//      * Since this isn't thread safe we do this conditionally. In case of threaded writes this is done in
-//      * handleClientsWithPendingWritesUsingThreads(). */
-//     if (io_threads_op == IO_THREADS_OP_IDLE)
-//         updateClientMemUsage(c);
-//     return C_OK;
-// }
+        /* Close connection after entire reply has been sent. */
+        if (c->flags & CLIENT_CLOSE_AFTER_REPLY) {
+            freeClientAsync(c);
+            return C_ERR;
+        }
+    }
+    /* Update client's memory usage after writing.
+     * Since this isn't thread safe we do this conditionally. In case of threaded writes this is done in
+     * handleClientsWithPendingWritesUsingThreads(). */
+    if (io_threads_op == IO_THREADS_OP_IDLE)
+        updateClientMemUsage(c);
+    return C_OK;
+}
 
 // /* Write event handler. Just send data to the client. */
 void sendReplyToClient(connection *conn) {
@@ -1987,35 +1987,37 @@ void sendReplyToClient(connection *conn) {
 //  * we can just write the replies to the client output buffer without any
 //  * need to use a syscall in order to install the writable event handler,
 //  * get it called, and so forth. */
-// int handleClientsWithPendingWrites(void) {
-//     listIter li;
-//     listNode *ln;
-//     int processed = listLength(server.clients_pending_write);
+int handleClientsWithPendingWrites(void) {
+    listIter li;
+    listNode *ln;
+    int processed = listLength(server.clients_pending_write);
 
-//     listRewind(server.clients_pending_write,&li);
-//     while((ln = listNext(&li))) {
-//         client *c = listNodeValue(ln);
-//         c->flags &= ~CLIENT_PENDING_WRITE;
-//         listUnlinkNode(server.clients_pending_write,ln);
+    listRewind(server.clients_pending_write,&li);
+    while((ln = listNext(&li))) {
+        client *c = listNodeValue(ln);
+        c->flags &= ~CLIENT_PENDING_WRITE;
+        listUnlinkNode(server.clients_pending_write,ln);
 
-//         /* If a client is protected, don't do anything,
-//          * that may trigger write error or recreate handler. */
-//         if (c->flags & CLIENT_PROTECTED) continue;
+        /* If a client is protected, don't do anything,
+         * that may trigger write error or recreate handler. */
+        if (c->flags & CLIENT_PROTECTED) continue;
 
-//         /* Don't write to clients that are going to be closed anyway. */
-//         if (c->flags & CLIENT_CLOSE_ASAP) continue;
+        /* Don't write to clients that are going to be closed anyway. */
+        if (c->flags & CLIENT_CLOSE_ASAP) continue;
 
-//         /* Try to write buffers to the client socket. */
-//         if (writeToClient(c,0) == C_ERR) continue;
+        /* Try to write buffers to the client socket. */
+        if (writeToClient(c,0) == C_ERR) continue;
 
-//         /* If after the synchronous writes above we still have data to
-//          * output to the client, we need to install the writable handler. */
-//         if (clientHasPendingReplies(c)) {
-//             installClientWriteHandler(c);
-//         }
-//     }
-//     return processed;
-// }
+        /* If after the synchronous writes above we still have data to
+         * output to the client, we need to install the writable handler. */
+        if (clientHasPendingReplies(c)) {
+            installClientWriteHandler(c);
+        }
+            // installClientWriteHandler(c); //debug michael add 
+
+    }
+    return processed;
+}
 
 // /* resetClient prepare the client to process the next command */
 void resetClient(client *c) {
@@ -3990,7 +3992,7 @@ typedef struct __attribute__((aligned(CACHE_LINE_SIZE))) threads_pending {
 } threads_pending;
 
 // pthread_t io_threads[IO_THREADS_MAX_NUM];
-// pthread_mutex_t io_threads_mutex[IO_THREADS_MAX_NUM];
+pthread_mutex_t io_threads_mutex[IO_THREADS_MAX_NUM];
 threads_pending io_threads_pending[IO_THREADS_MAX_NUM];
 int io_threads_op;      /* IO_THREADS_OP_IDLE, IO_THREADS_OP_READ or IO_THREADS_OP_WRITE. */ // TODO: should access to this be atomic??!
 // 
@@ -4108,22 +4110,22 @@ static inline void setIOPendingCount(int i, unsigned long count) {
 //     }
 // }
 
-// void startThreadedIO(void) {
-//     serverAssert(server.io_threads_active == 0);
-//     for (int j = 1; j < server.io_threads_num; j++)
-//         pthread_mutex_unlock(&io_threads_mutex[j]);
-//     server.io_threads_active = 1;
-// }
+void startThreadedIO(void) {
+    serverAssert(server.io_threads_active == 0);
+    for (int j = 1; j < server.io_threads_num; j++)
+        pthread_mutex_unlock(&io_threads_mutex[j]);
+    server.io_threads_active = 1;
+}
 
-// void stopThreadedIO(void) {
-//     /* We may have still clients with pending reads when this function
-//      * is called: handle them before stopping the threads. */
-//     handleClientsWithPendingReadsUsingThreads();
-//     serverAssert(server.io_threads_active == 1);
-//     for (int j = 1; j < server.io_threads_num; j++)
-//         pthread_mutex_lock(&io_threads_mutex[j]);
-//     server.io_threads_active = 0;
-// }
+void stopThreadedIO(void) {
+    /* We may have still clients with pending reads when this function
+     * is called: handle them before stopping the threads. */
+    handleClientsWithPendingReadsUsingThreads();
+    serverAssert(server.io_threads_active == 1);
+    for (int j = 1; j < server.io_threads_num; j++)
+        pthread_mutex_lock(&io_threads_mutex[j]);
+    server.io_threads_active = 0;
+}
 
 // /* This function checks if there are not enough pending clients to justify
 //  * taking the I/O threads active: in that case I/O threads are stopped if
@@ -4134,19 +4136,19 @@ static inline void setIOPendingCount(int i, unsigned long count) {
 //  * The function returns 0 if the I/O threading should be used because there
 //  * are enough active threads, otherwise 1 is returned and the I/O threads
 //  * could be possibly stopped (if already active) as a side effect. */
-// int stopThreadedIOIfNeeded(void) {
-//     int pending = listLength(server.clients_pending_write);
+int stopThreadedIOIfNeeded(void) {
+    int pending = listLength(server.clients_pending_write);
 
-//     /* Return ASAP if IO threads are disabled (single threaded mode). */
-//     if (server.io_threads_num == 1) return 1;
+    /* Return ASAP if IO threads are disabled (single threaded mode). */
+    if (server.io_threads_num == 1) return 1;
 
-//     if (pending < (server.io_threads_num*2)) {
-//         if (server.io_threads_active) stopThreadedIO();
-//         return 1;
-//     } else {
-//         return 0;
-//     }
-// }
+    if (pending < (server.io_threads_num*2)) {
+        if (server.io_threads_active) stopThreadedIO();
+        return 1;
+    } else {
+        return 0;
+    }
+}
 
 // /* This function achieves thread safety using a fan-out -> fan-in paradigm:
 //  * Fan out: The main thread fans out work to the io-threads which block until
@@ -4154,99 +4156,99 @@ static inline void setIOPendingCount(int i, unsigned long count) {
 //  * Fan in: The main thread waits until getIOPendingCount() returns 0. Then
 //  * it can safely perform post-processing and return to normal synchronous
 //  * work. */
-// int handleClientsWithPendingWritesUsingThreads(void) {
-//     int processed = listLength(server.clients_pending_write);
-//     if (processed == 0) return 0; /* Return ASAP if there are no clients. */
+int handleClientsWithPendingWritesUsingThreads(void) {
+    int processed = listLength(server.clients_pending_write);
+    if (processed == 0) return 0; /* Return ASAP if there are no clients. */
 
-//     /* If I/O threads are disabled or we have few clients to serve, don't
-//      * use I/O threads, but the boring synchronous code. */
-//     if (server.io_threads_num == 1 || stopThreadedIOIfNeeded()) {
-//         return handleClientsWithPendingWrites();
-//     }
+    /* If I/O threads are disabled or we have few clients to serve, don't
+     * use I/O threads, but the boring synchronous code. */
+    if (server.io_threads_num == 1 || stopThreadedIOIfNeeded()) {
+        return handleClientsWithPendingWrites();
+    }
 
-//     /* Start threads if needed. */
-//     if (!server.io_threads_active) startThreadedIO();
+    /* Start threads if needed. */
+    if (!server.io_threads_active) startThreadedIO();
 
-//     /* Distribute the clients across N different lists. */
-//     listIter li;
-//     listNode *ln;
-//     listRewind(server.clients_pending_write,&li);
-//     int item_id = 0;
-//     while((ln = listNext(&li))) {
-//         client *c = listNodeValue(ln);
-//         c->flags &= ~CLIENT_PENDING_WRITE;
+    /* Distribute the clients across N different lists. */
+    listIter li;
+    listNode *ln;
+    listRewind(server.clients_pending_write,&li);
+    int item_id = 0;
+    while((ln = listNext(&li))) {
+        client *c = listNodeValue(ln);
+        c->flags &= ~CLIENT_PENDING_WRITE;
 
-//         /* Remove clients from the list of pending writes since
-//          * they are going to be closed ASAP. */
-//         if (c->flags & CLIENT_CLOSE_ASAP) {
-//             listUnlinkNode(server.clients_pending_write, ln);
-//             continue;
-//         }
+        /* Remove clients from the list of pending writes since
+         * they are going to be closed ASAP. */
+        if (c->flags & CLIENT_CLOSE_ASAP) {
+            listUnlinkNode(server.clients_pending_write, ln);
+            continue;
+        }
 
-//         /* Since all replicas and replication backlog use global replication
-//          * buffer, to guarantee data accessing thread safe, we must put all
-//          * replicas client into io_threads_list[0] i.e. main thread handles
-//          * sending the output buffer of all replicas. */
-//         if (getClientType(c) == CLIENT_TYPE_SLAVE) {
-//             listAddNodeTail(io_threads_list[0],c);
-//             continue;
-//         }
+        /* Since all replicas and replication backlog use global replication
+         * buffer, to guarantee data accessing thread safe, we must put all
+         * replicas client into io_threads_list[0] i.e. main thread handles
+         * sending the output buffer of all replicas. */
+        if (getClientType(c) == CLIENT_TYPE_SLAVE) {
+            listAddNodeTail(io_threads_list[0],c);
+            continue;
+        }
 
-//         int target_id = item_id % server.io_threads_num;
-//         listAddNodeTail(io_threads_list[target_id],c);
-//         item_id++;
-//     }
+        int target_id = item_id % server.io_threads_num;
+        listAddNodeTail(io_threads_list[target_id],c);
+        item_id++;
+    }
 
-//     /* Give the start condition to the waiting threads, by setting the
-//      * start condition atomic var. */
-//     io_threads_op = IO_THREADS_OP_WRITE;
-//     for (int j = 1; j < server.io_threads_num; j++) {
-//         int count = listLength(io_threads_list[j]);
-//         setIOPendingCount(j, count);
-//     }
+    /* Give the start condition to the waiting threads, by setting the
+     * start condition atomic var. */
+    io_threads_op = IO_THREADS_OP_WRITE;
+    for (int j = 1; j < server.io_threads_num; j++) {
+        int count = listLength(io_threads_list[j]);
+        setIOPendingCount(j, count);
+    }
 
-//     /* Also use the main thread to process a slice of clients. */
-//     listRewind(io_threads_list[0],&li);
-//     while((ln = listNext(&li))) {
-//         client *c = listNodeValue(ln);
-//         writeToClient(c,0);
-//     }
-//     listEmpty(io_threads_list[0]);
+    /* Also use the main thread to process a slice of clients. */
+    listRewind(io_threads_list[0],&li);
+    while((ln = listNext(&li))) {
+        client *c = listNodeValue(ln);
+        writeToClient(c,0);
+    }
+    listEmpty(io_threads_list[0]);
 
-//     /* Wait for all the other threads to end their work. */
-//     while(1) {
-//         unsigned long pending = 0;
-//         for (int j = 1; j < server.io_threads_num; j++)
-//             pending += getIOPendingCount(j);
-//         if (pending == 0) break;
-//     }
+    /* Wait for all the other threads to end their work. */
+    while(1) {
+        unsigned long pending = 0;
+        for (int j = 1; j < server.io_threads_num; j++)
+            pending += getIOPendingCount(j);
+        if (pending == 0) break;
+    }
 
-//     io_threads_op = IO_THREADS_OP_IDLE;
+    io_threads_op = IO_THREADS_OP_IDLE;
 
-//     /* Run the list of clients again to install the write handler where
-//      * needed. */
-//     listRewind(server.clients_pending_write,&li);
-//     while((ln = listNext(&li))) {
-//         client *c = listNodeValue(ln);
+    /* Run the list of clients again to install the write handler where
+     * needed. */
+    listRewind(server.clients_pending_write,&li);
+    while((ln = listNext(&li))) {
+        client *c = listNodeValue(ln);
 
-//         /* Update the client in the mem usage after we're done processing it in the io-threads */
-//         updateClientMemUsage(c);
+        /* Update the client in the mem usage after we're done processing it in the io-threads */
+        updateClientMemUsage(c);
 
-//         /* Install the write handler if there are pending writes in some
-//          * of the clients. */
-//         if (clientHasPendingReplies(c)) {
-//             installClientWriteHandler(c);
-//         }
-//     }
-//     while(listLength(server.clients_pending_write) > 0) {
-//         listUnlinkNode(server.clients_pending_write, server.clients_pending_write->head);
-//     }
+        /* Install the write handler if there are pending writes in some
+         * of the clients. */
+        if (clientHasPendingReplies(c)) {
+            installClientWriteHandler(c);
+        }
+    }
+    while(listLength(server.clients_pending_write) > 0) {
+        listUnlinkNode(server.clients_pending_write, server.clients_pending_write->head);
+    }
 
-//     /* Update processed count on server */
-//     server.stat_io_writes_processed += processed;
+    /* Update processed count on server */
+    server.stat_io_writes_processed += processed;
 
-//     return processed;
-// }
+    return processed;
+}
 
 // /* Return 1 if we want to handle the client read later using threaded I/O.
 //  * This is called by the readable handler of the event loop.

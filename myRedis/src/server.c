@@ -395,10 +395,10 @@ void populateCommandTable(void) {
         serverAssert(retval1 == DICT_OK && retval2 == DICT_OK);
 
         //debug michael 
-        if(c->fullname=="commandDocsCommand")
-        {
-            _debugCommand=c;
-        }
+        // if(c->fullname=="commandDocsCommand")
+        // {
+        //     _debugCommand=c;
+        // }
     }
 }
 
@@ -1507,10 +1507,10 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     handleClientsWithPendingReadsUsingThreads();
 
     // /* Handle pending data(typical TLS). (must be done before flushAppendOnlyFile) */
-    // connTypeProcessPendingData();
+    connTypeProcessPendingData();
 
     // /* If any connection type(typical TLS) still has pending unread data don't sleep at all. */
-    // aeSetDontWait(server.el, connTypeHasPendingData());
+    aeSetDontWait(server.el, connTypeHasPendingData());
 
     // /* Call the Redis Cluster before sleep function. Note that this function
     //  * may change the state of Redis Cluster (from ok to fail or vice versa),
@@ -1521,7 +1521,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     // /* Run a fast expire cycle (the called function will return
     //  * ASAP if a fast cycle is not needed). */
     // if (server.active_expire_enabled && server.masterhost == NULL)
-    //     activeExpireCycle(ACTIVE_EXPIRE_CYCLE_FAST);
+        // activeExpireCycle(ACTIVE_EXPIRE_CYCLE_FAST);
 
     // /* Unblock all the clients blocked for synchronous replication
     //  * in WAIT. */
@@ -1563,7 +1563,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     // /* Since we rely on current_client to send scheduled invalidation messages
     //  * we have to flush them after each command, so when we get here, the list
     //  * must be empty. */
-    // serverAssert(listLength(server.tracking_pending_keys) == 0);
+    serverAssert(listLength(server.tracking_pending_keys) == 0);
 
     // /* Send the invalidation messages to clients participating to the
     //  * client side caching protocol in broadcasting (BCAST) mode. */
@@ -1585,10 +1585,10 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     //     flushAppendOnlyFile(0);
 
     // /* Handle writes with pending output buffers. */
-    // handleClientsWithPendingWritesUsingThreads();
+    handleClientsWithPendingWritesUsingThreads();
 
     // /* Close clients that need to be closed asynchronous */
-    // freeClientsInAsyncFreeQueue();
+    freeClientsInAsyncFreeQueue();
 
     // /* Incrementally trim replication backlog, 10 times the normal speed is
     //  * to free replication backlog as much as possible. */
@@ -1596,7 +1596,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     //     incrementalTrimReplicationBacklog(10*REPL_BACKLOG_TRIM_BLOCKS_PER_CALL);
 
     // /* Disconnect some clients if they are consuming too much memory. */
-    // evictClients();
+    evictClients();
 
     // /* Before we are going to sleep, let the threads access the dataset by
     //  * releasing the GIL. Redis main thread will not touch anything at this
@@ -1668,7 +1668,7 @@ void initServer(void) {
     // server.slaveseldb = -1; /* Force to emit the first SELECT command. */
     // server.unblocked_clients = listCreate();
     // server.ready_keys = listCreate();
-    // server.tracking_pending_keys = listCreate();
+    server.tracking_pending_keys = listCreate();
     // server.clients_waiting_acks = listCreate();
     // server.get_ack_from_slaves = 0;
     server.paused_actions = 0;
@@ -2054,6 +2054,55 @@ void propagatePendingCommands() {
 
     // redisOpArrayFree(&server.also_propagate);
 }
+
+/* COMMAND INFO [<command-name> ...] */
+void commandInfoCommand(client *c) {
+    int i;
+
+    if (c->argc == 2) {
+        dictIterator *di;
+        dictEntry *de;
+        addReplyArrayLen(c, dictSize(server.commands));
+        di = dictGetIterator(server.commands);
+        while ((de = dictNext(di)) != NULL) {
+            addReplyCommandInfo(c, dictGetVal(de));
+        }
+        dictReleaseIterator(di);
+    } else {
+        addReplyArrayLen(c, c->argc-2);
+        for (i = 2; i < c->argc; i++) {
+            addReplyCommandInfo(c, lookupCommandBySds(c->argv[i]->ptr));
+        }
+    }
+}
+
+/* COMMAND HELP */
+void commandHelpCommand(client *c) {
+    const char *help[] = {
+"(no subcommand)",
+"    Return details about all Redis commands.",
+"COUNT",
+"    Return the total number of commands in this Redis server.",
+"LIST",
+"    Return a list of all commands in this Redis server.",
+"INFO [<command-name> ...]",
+"    Return details about multiple Redis commands.",
+"    If no command names are given, documentation details for all",
+"    commands are returned.",
+"DOCS [<command-name> ...]",
+"    Return documentation details about multiple Redis commands.",
+"    If no command names are given, documentation details for all",
+"    commands are returned.",
+"GETKEYS <full-command>",
+"    Return the keys from a full Redis command.",
+"GETKEYSANDFLAGS <full-command>",
+"    Return the keys and the access flags from a full Redis command.",
+NULL
+    };
+
+    // addReplyHelp(c, help);
+}
+
 void afterCommand(client *c) {
     UNUSED(c);
     if (!server.in_nested_call) {
@@ -3052,6 +3101,28 @@ void addReplyCommandTips(client *c, struct redisCommand *cmd) {
         addReplyBulkCString(c, cmd->tips[j]);
     }
 }
+/* Reply with an array of sub-command using the provided reply callback. */
+void addReplyCommandSubCommands(client *c, struct redisCommand *cmd, void (*reply_function)(client*, struct redisCommand*), int use_map) {
+    if (!cmd->subcommands_dict) {
+        addReplySetLen(c, 0);
+        return;
+    }
+
+    if (use_map)
+        addReplyMapLen(c, dictSize(cmd->subcommands_dict));
+    else
+        addReplyArrayLen(c, dictSize(cmd->subcommands_dict));
+    dictEntry *de;
+    dictIterator *di = dictGetSafeIterator(cmd->subcommands_dict);
+    while((de = dictNext(di)) != NULL) {
+        struct redisCommand *sub = (struct redisCommand *)dictGetVal(de);
+        if (use_map)
+            addReplyBulkCBuffer(c, sub->fullname, sdslen(sub->fullname));
+        reply_function(c, sub);
+    }
+    dictReleaseIterator(di);
+}
+
 
 /* Output the representation of a Redis command. Used by the COMMAND command and COMMAND INFO. */
 void addReplyCommandInfo(client *c, struct redisCommand *cmd) {
@@ -3074,10 +3145,10 @@ void addReplyCommandInfo(client *c, struct redisCommand *cmd) {
         addReplyLongLong(c, firstkey);
         addReplyLongLong(c, lastkey);
         addReplyLongLong(c, keystep);
-        // addReplyCommandCategories(c, cmd); //debug michael
+        addReplyCommandCategories(c, cmd); //debug michael
         addReplyCommandTips(c, cmd);
         // addReplyCommandKeySpecs(c, cmd); //debug michael
-        // addReplyCommandSubCommands(c, cmd, addReplyCommandInfo, 0); //debug michael
+        addReplyCommandSubCommands(c, cmd, addReplyCommandInfo, 0); //debug michael
     }
 }
 
@@ -3200,8 +3271,12 @@ void addReplyCommandDocs(client *c, struct redisCommand *cmd) {
     }
     if (cmd->subcommands_dict) {
         addReplyBulkCString(c, "subcommands");
-        // addReplyCommandSubCommands(c, cmd, addReplyCommandDocs, 1); //debug michael
+        addReplyCommandSubCommands(c, cmd, addReplyCommandDocs, 1); //debug michael
     }
+}
+/* COMMAND COUNT */
+void commandCountCommand(client *c) {
+    addReplyLongLong(c, dictSize(server.commands));
 }
 
 void commandDocsCommand(client *c) {
@@ -3218,6 +3293,8 @@ void commandDocsCommand(client *c) {
             addReplyCommandDocs(c, cmd);
         }
         dictReleaseIterator(di);
+        // addReply(c,shared.pong);//debug michael add
+
     } else {
         /* Reply with an array of the requested commands (if we find them) */
         int numcmds = 0;

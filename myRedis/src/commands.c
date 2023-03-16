@@ -24,6 +24,14 @@ struct redisCommandArg PING_Args[] = {
 {0}
 };
 
+/********** COMMAND COUNT ********************/
+
+/* COMMAND COUNT history */
+#define COMMAND_COUNT_History NULL
+
+/* COMMAND COUNT tips */
+#define COMMAND_COUNT_tips NULL
+
 /********** COMMAND DOCS ********************/
 
 /* COMMAND DOCS history */
@@ -41,9 +49,40 @@ struct redisCommandArg COMMAND_DOCS_Args[] = {
 {0}
 };
 
+/********** COMMAND HELP ********************/
+
+/* COMMAND HELP history */
+#define COMMAND_HELP_History NULL
+
+/* COMMAND HELP tips */
+#define COMMAND_HELP_tips NULL
+
+/********** COMMAND INFO ********************/
+
+/* COMMAND INFO history */
+commandHistory COMMAND_INFO_History[] = {
+{"7.0.0","Allowed to be called with no argument to get info on all commands."},
+{0}
+};
+
+/* COMMAND INFO tips */
+const char *COMMAND_INFO_tips[] = {
+"nondeterministic_output_order",
+NULL
+};
+
+/* COMMAND INFO argument table */
+struct redisCommandArg COMMAND_INFO_Args[] = {
+{"command-name",ARG_TYPE_STRING,-1,NULL,NULL,NULL,CMD_ARG_OPTIONAL|CMD_ARG_MULTIPLE},
+{0}
+};
+
 /* COMMAND command table */
 struct redisCommand COMMAND_Subcommands[] = {
+{"count","Get total number of Redis commands","O(1)","2.8.13",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_SERVER,COMMAND_COUNT_History,COMMAND_COUNT_tips,commandCountCommand,2,CMD_LOADING|CMD_STALE|CMD_SENTINEL,ACL_CATEGORY_CONNECTION},
 {"docs","Get array of specific Redis command documentation","O(N) where N is the number of commands to look up","7.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_SERVER,COMMAND_DOCS_History,COMMAND_DOCS_tips,commandDocsCommand,-2,CMD_LOADING|CMD_STALE|CMD_SENTINEL,ACL_CATEGORY_CONNECTION,.args=COMMAND_DOCS_Args},
+{"help","Show helpful text about the different subcommands","O(1)","5.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_SERVER,COMMAND_HELP_History,COMMAND_HELP_tips,commandHelpCommand,2,CMD_LOADING|CMD_STALE|CMD_SENTINEL,ACL_CATEGORY_CONNECTION},
+{"info","Get array of specific Redis command details, or all when no argument is given.","O(N) where N is the number of commands to look up","2.8.13",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_SERVER,COMMAND_INFO_History,COMMAND_INFO_tips,commandInfoCommand,-2,CMD_LOADING|CMD_STALE|CMD_SENTINEL,ACL_CATEGORY_CONNECTION,.args=COMMAND_INFO_Args},
 {0}
 };
 

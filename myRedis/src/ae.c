@@ -104,12 +104,12 @@ err:
 // }
 
 // /* Tells the next iteration/s of the event processing to set timeout of 0. */
-// void aeSetDontWait(aeEventLoop *eventLoop, int noWait) {
-//     if (noWait)
-//         eventLoop->flags |= AE_DONT_WAIT;
-//     else
-//         eventLoop->flags &= ~AE_DONT_WAIT;
-// }
+void aeSetDontWait(aeEventLoop *eventLoop, int noWait) {
+    if (noWait)
+        eventLoop->flags |= AE_DONT_WAIT;
+    else
+        eventLoop->flags &= ~AE_DONT_WAIT;
+}
 
 // /* Resize the maximum set size of the event loop.
 //  * If the requested set size is smaller than the current set size, but

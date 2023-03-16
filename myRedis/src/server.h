@@ -54,6 +54,9 @@ typedef struct redisObject robj;
 #define CMD_CALL_FULL (CMD_CALL_SLOWLOG | CMD_CALL_STATS | CMD_CALL_PROPAGATE)
 #define CMD_CALL_FROM_MODULE (1<<4)  /* From RM_Call */
 
+#define ACTIVE_EXPIRE_CYCLE_SLOW 0
+#define ACTIVE_EXPIRE_CYCLE_FAST 1
+
 /* Must be synced with ARG_TYPE_STR and generate-command-code.py */
 typedef enum {
     ARG_TYPE_STRING,
@@ -1048,9 +1051,9 @@ struct redisServer {
     // unsigned long slowlog_max_len;     /* SLOWLOG max number of items logged */
     // struct malloc_stats cron_malloc_stats; /* sampled in serverCron(). */
     redisAtomic long long stat_net_input_bytes; /* Bytes read from network. */
-    // redisAtomic long long stat_net_output_bytes; /* Bytes written to network. */
+    redisAtomic long long stat_net_output_bytes; /* Bytes written to network. */
     redisAtomic long long stat_net_repl_input_bytes; /* Bytes read during replication, added to stat_net_input_bytes in 'info'. */
-    // redisAtomic long long stat_net_repl_output_bytes; /* Bytes written during replication, added to stat_net_output_bytes in 'info'. */
+    redisAtomic long long stat_net_repl_output_bytes; /* Bytes written during replication, added to stat_net_output_bytes in 'info'. */
     // size_t stat_current_cow_peak;   /* Peak size of copy on write bytes. */
     // size_t stat_current_cow_bytes;  /* Copy on write bytes while child is active. */
     // monotime stat_current_cow_updated;  /* Last update time of stat_current_cow_bytes */
@@ -2039,6 +2042,29 @@ void addReplyBulkCBuffer(client *c, const void *p, size_t len);
 void addReplyLongLong(client *c, long long ll);
 // void addReplyPubsubMessage(client *c, robj *channel, robj *msg, robj *message_bulk);
 void sendReplyToClient(connection *conn);
+int handleClientsWithPendingWritesUsingThreads(void);
+void incrementalTrimReplicationBacklog(size_t blocks);
+int writeToClient(client *c, int handler_installed);
+void activeExpireCycle(int type);
+void trackingBroadcastInvalidationMessages(void);
+int freeClientsInAsyncFreeQueue(void);
+void addReplySetLen(client *c, long length);
+void addReplyMapLen(client *c, long length);
+void addReplyCommandCategories(client *c, struct redisCommand *cmd);
+#ifdef __GNUC__
+void addReplyErrorFormatEx(client *c, int flags, const char *fmt, ...)
+    __attribute__((format(printf, 3, 4)));
+void addReplyErrorFormat(client *c, const char *fmt, ...)
+    __attribute__((format(printf, 2, 3)));
+void addReplyStatusFormat(client *c, const char *fmt, ...)
+    __attribute__((format(printf, 2, 3)));
+#else
+void addReplyErrorFormatEx(client *c, int flags, const char *fmt, ...);
+void addReplyErrorFormat(client *c, const char *fmt, ...);
+void addReplyStatusFormat(client *c, const char *fmt, ...);
+#endif
+void setDeferredSetLen(client *c, void *node, long length);
+void addReplyBulkCString(client *c, const char *s);
 
 #pragma region commands
 
@@ -2073,6 +2099,9 @@ void sendReplyToClient(connection *conn);
 /* Commands prototypes */
 void commandCommand(client *c);
 void commandDocsCommand(client *c);
+void commandCountCommand(client *c);
+void commandHelpCommand(client *c);
+void commandInfoCommand(client *c);
 
 #pragma endregion
 
