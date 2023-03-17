@@ -245,10 +245,10 @@ int populateCommandStructure(struct redisCommand *c) {
             commandAddSubcommand(c, sub, sub->declared_name);
 
              //debug michael 
-            if(sub->declared_name=="docs")
-            {
-                _debugCommand=sub;
-            }
+            // if(sub->declared_name=="docs")
+            // {
+            //     _debugCommand=sub;
+            // }
         }
     }
 
@@ -395,10 +395,10 @@ void populateCommandTable(void) {
         serverAssert(retval1 == DICT_OK && retval2 == DICT_OK);
 
         //debug michael 
-        // if(c->fullname=="commandDocsCommand")
-        // {
-        //     _debugCommand=c;
-        // }
+        if(c->declared_name =="ping")
+        {
+            _debugCommand=c;
+        }
     }
 }
 
