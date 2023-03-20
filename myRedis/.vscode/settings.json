@@ -28,7 +28,16 @@
         "stream.h": "c",
         "rax.h": "c",
         "linenoise.h": "c",
-        "type_traits": "c"
+        "type_traits": "c",
+        "*.tcc": "c",
+        "exception": "c",
+        "memory_resource": "c",
+        "fstream": "c",
+        "iosfwd": "c",
+        "new": "c",
+        "ostream": "c",
+        "sstream": "c",
+        "streambuf": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }
