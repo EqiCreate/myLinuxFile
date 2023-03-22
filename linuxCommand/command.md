@@ -1,3 +1,5 @@
+### 20230321
+- find . -name 'xx'
 ### 20221226
 - 多次循环执行命令
   - 如 执行50次循环的sensor : for i in {1..50}; do sensors;sleep 2;done
