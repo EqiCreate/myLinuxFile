@@ -1,3 +1,28 @@
+### 20230403
+- 自启动sh
+  - 在etc/systemd/system 新建xx.service
+  ```shell
+  [Unit]
+  Description=My custom startup script
+  SourcePath=/etc/test.sh
+
+  [Service]
+  Type=simple
+  Restart=always
+  TimeoutSec=5min
+  IgnoreSIGPIPE=no
+  KillMode=process
+  GuessMainPID=no
+  RemainAfterExit=yes
+  ExecStart=/etc/test.sh start
+  ExecStop=/etc/test.sh stop
+  User=michael
+
+  [Install]
+  WantedBy=multi-user.target
+  ```
+    - 在所示的例子中引用sh 路径
+    - systemctl start/enable xx.service
 ### 20230321
 - find . -name 'xx'
 ### 20221226
