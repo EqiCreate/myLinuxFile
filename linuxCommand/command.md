@@ -23,6 +23,23 @@
   ```
     - 在所示的例子中引用sh 路径
     - systemctl start/enable xx.service
+- nginx web server
+  ```conf
+    server {
+                listen 5001;
+                server_name localhost;
+                root /usr/local/gitcode/myLinuxFile/mywebapp/reactapp/build;
+                location /{
+                        try_files $uri $uri/ @router;
+                        index index.html index.htm;
+                }
+
+                location @router {
+                        rewrite ^.*$ /index.html last;
+                }
+        }
+
+  ```
 ### 20230321
 - find . -name 'xx'
 ### 20221226
