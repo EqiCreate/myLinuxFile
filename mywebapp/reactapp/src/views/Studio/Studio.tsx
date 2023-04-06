@@ -5,12 +5,21 @@ import { Player } from 'video-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store/reducers';
 import * as StudioAction from '../../store/actions/ViedeoAction'
+import { PlayerExample } from '../../components/PlayerExample/PlayerExample';
 
 const Studio:React.FC=()=>{
     const studio = useSelector((state: RootState) => state.studio);
+    var newTrack="";
+
     const TrackAdd=()=>{
-        StudioAction.add({path:"dddd"});
+        if(newTrack!=""){
+            StudioAction.add({path:newTrack});
+        }
     }
+    const inputChange=(e:React.ChangeEvent<HTMLInputElement>)=>{
+        newTrack=e.target.value;
+    }
+
     const getStudioComponent=useMemo(()=>{
         if(studio.queue.length===0){
             return(
@@ -20,20 +29,22 @@ const Studio:React.FC=()=>{
        
         return (
             <div>
-               
-                     {/* <Player> */}
-                    {/* <source src="https://media.w3.org/2010/05/sintel/trailer_hd.mp4" /> */}
-                    <button >{studio.queue[0].path}</button>
-
-                 {/* </Player> */}
-                
+                <button >{studio.queue[0].path}</button>
             </div>
           
         );
     },[studio.queue]);
     return <div className={`${appStyles.view} ${styles.viewLibrary}`}>
+                <input  onChange={inputChange}></input>
                 <button onClick={TrackAdd} >Add</button>
-        
+                <div className={`${styles.viewPlayer}`}>
+                    <PlayerExample >
+                            {/* <source src={studio.queue[studio.queue.length-1].path}/> */}
+                    </PlayerExample>
+                </div>
+                <div>
+                    <footer>dasdf</footer>
+                </div>
         {getStudioComponent}</div>;
 
 }

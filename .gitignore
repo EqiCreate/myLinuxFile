@@ -36,6 +36,9 @@
 *.i*86
 *.x86_64
 *.hex
+*.mp4
+*.mkv
+*.avi
 
 # Debug files
 *.dSYM/
