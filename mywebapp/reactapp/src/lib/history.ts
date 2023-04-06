@@ -6,8 +6,8 @@ import { createHashHistory ,createBrowserHistory} from 'history';
  * The effort to transition to a full HashRouter is not worth at the moment
  * imho.
  */
-//  const history = createHashHistory() ;
-const history = createBrowserHistory() ;
+ const history = createHashHistory() ;
+// const history = createBrowserHistory() ;
 
 
  export default history;

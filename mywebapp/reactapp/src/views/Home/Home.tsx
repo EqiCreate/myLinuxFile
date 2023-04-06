@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import appStyles from '../../App.module.css';
-import {Form1,PlayerExample} from '../../components/PlayerExample/PlayerExample';
+import {PlayerExample} from '../../components/PlayerExample/PlayerExample';
 import styles from './Home.module.css';
 
 

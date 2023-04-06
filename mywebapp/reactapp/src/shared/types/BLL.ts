@@ -66,3 +66,15 @@ export interface Action {
     // year: number | null;
   }
  export type TrackModel = LinvoSchema<Track>;
+
+ export type Video = {
+  __typename: "video";
+  name: string;
+  // id: string;
+  Url: string;
+  // independent: boolean;
+  // unMember: boolean;
+  // region: string;
+  // capital: string;
+  // subregion: string;
+};

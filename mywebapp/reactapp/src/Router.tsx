@@ -12,14 +12,14 @@ const RouterFC: React.FC = () => {
     // const library = useSelector((state: RootState) => state.library);
   
       return (
-            <BrowserRouter >
+            <HistoryRouter history={history} >
               <App>
                 <Routes>
                   <Route path='/home' element={<Home/>}></Route>
                   <Route path='/studio' element={<Studio/>}></Route>
                 </Routes>
               </App>
-            </BrowserRouter>
+            </HistoryRouter>
       );
   };
   export default RouterFC;

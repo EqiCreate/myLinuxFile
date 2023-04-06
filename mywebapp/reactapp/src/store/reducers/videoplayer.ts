@@ -10,6 +10,7 @@ export interface VideoPlayerState {
     // repeat: Repeat;
     // shuffle: boolean;
     playerStatus: PlayerStatus;
+    id:number
   }
 
   const initialState: VideoPlayerState = {
@@ -20,18 +21,30 @@ export interface VideoPlayerState {
     // repeat: config.get('audioRepeat'), // the current repeat state (one, all, none)
     // shuffle: config.get('audioShuffle'), // If shuffle mode is enabled
     playerStatus: PlayerStatus.STOP, // Player status
+    id:2
   };
 
 export default (state = initialState, action: Action): VideoPlayerState => {
     switch (action.type) {
         case ActionTypes.MOVIE_ADD:
-        const queue = action.payload;
-            return {
-                ...state,
-                queue
+            {
+                const queue = action.payload;
+                return {
+                    ...state,
+                    queue
+                };
             };
+       
+        case ActionTypes.TESTID:{
+            const id=action.payload;
+            return{
+                ...state,
+                id:state.id+1
+            };
+        };
+            
     
         default:
-            return state;
+            return initialState;
     }
 };
