@@ -8,13 +8,14 @@ import { PlayerExample } from '../../components/PlayerExample/PlayerExample';
 import { Page } from '../../components/Page/Page';
 import { Video } from '../../shared/types/BLL';
 import { raw_data_videos } from '../../raw-data-videos';
+import Footer from '../../components/Footer/Footer';
 
 const getVideosFromRawData = (raw: any[]): Video[] => {
     return raw.map((value: any) => (
     {
       __typename: "video",
       name: String(value.name.common),
-      Url: `${String(value.cca2).toLowerCase()}`
+      Url: `${String(value.cca2)}`
     }
     ));
   };
@@ -48,7 +49,7 @@ const Studio:React.FC=()=>{
                   <div className={`${styles.viewPlayer}`}>
                     <PlayerExample  playerSource={studio.queue}/>
                 </div>
-                <button >id== {studio.id} </button>
+                {/* <button >id== {studio.id} </button> */}
 
                 {/* <button >{studio.queue[studio.queue.length-1].path} {studio.id} {studio.queue.length}</button> */}
             </div>
@@ -56,13 +57,14 @@ const Studio:React.FC=()=>{
         );
     },[studio.queue,studio.id]);
     return <div className={`${appStyles.view} ${styles.viewLibrary}`}>
-                <input  onChange={inputChange}></input>
-                <button onClick={TrackAdd} >Add</button>
+                {/* <input  onChange={inputChange}></input> */}
+                {/* <button onClick={TrackAdd} >Add</button> */}
                 <Page videos={getVideosFromRawData(raw_data_videos)}></Page>
                 <div>
-                    <footer>dasdf</footer>
+                    {getStudioComponent}
                 </div>
-        {getStudioComponent}</div>;
+                
+        </div>;
 
 }
 export default Studio;

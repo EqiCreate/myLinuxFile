@@ -1,5 +1,6 @@
 import React from "react";
 import { Video } from "../../shared/types/BLL";
+import styles from './SelectedVideo.module.css';
 
 export const SelectedVideo = ({
   video,
@@ -9,18 +10,18 @@ export const SelectedVideo = ({
     onSaved: () => void;
 }) => {
   return (
-    <div className="selected-container">
-      <div className="selected-info">
+    <div className={styles.selectedContainer}>
+      <div className={styles.selectedInfo}>
         <ul>
-          <li>Country: {video.name}</li>
+          <li>Name: {video.name}</li>
           <li>Url: {video.Url}</li>
         </ul>
         <button
-          className="selected-button"
+          className={styles.selectedButton}
           onClick={onSaved}
           type="button"
         >
-          Save
+          Play
         </button>
       </div>
       <p>{video.Url} </p>

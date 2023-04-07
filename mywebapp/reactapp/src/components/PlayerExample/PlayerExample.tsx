@@ -89,7 +89,7 @@ export class PlayerExample extends React.Component<Props> {
         <div className="docs-example">
           <Form>
             <FormGroup>
-              <Label for="inputVideoUrl">Video Url</Label>
+              {/* <Label for="inputVideoUrl">Video Url</Label> */}
               {/* <Input
                 name="inputVideoUrl"
                 id="inputVideoUrl"
@@ -98,10 +98,10 @@ export class PlayerExample extends React.Component<Props> {
               /> */}
             </FormGroup>
             <FormGroup>
-              <Button type="button" onClick={this.updatePlayerInfo}>
+              {/* <Button type="button" onClick={this.updatePlayerInfo}>
                 Update
-              </Button>
-              <Button type='button' onClick={this.openDialog}></Button>
+              </Button> */}
+              {/* <Button type='button' onClick={this.openDialog}></Button> */}
             </FormGroup>
           </Form>
         </div>

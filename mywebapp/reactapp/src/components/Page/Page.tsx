@@ -4,6 +4,7 @@ import { Video } from "../../shared/types/BLL";
 import { SelectedVideo } from "../SelectedVideo/SelectedVideo";
 import { VideoTracks } from "../VideoTracks/VideoTracks";
 import * as StudioAction from '../../store/actions/ViedeoAction'
+import styles from './Page.module.css';
 
 export const Page = ({ videos }: { videos: Video[] }) => {
   const [selectedVideo, setSelectedVideo] = useState<Video>(videos[0]);
@@ -33,9 +34,11 @@ export const Page = ({ videos }: { videos: Video[] }) => {
   return (
     <div>
       <h1>Videos</h1>
-      <div >
+      <div className={styles.contentCss}>
         {list}
-        {selected}
+        <div className={styles.SelectedConent}>
+          {selected}
+        </div>
       </div>
       </div>
   );
