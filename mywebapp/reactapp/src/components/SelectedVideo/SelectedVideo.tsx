@@ -24,6 +24,7 @@ export const SelectedVideo = ({
           Play
         </button>
       </div>
+     
       <p>{video.Url} </p>
     </div>
   );

@@ -35,7 +35,9 @@ export const Page = ({ videos }: { videos: Video[] }) => {
     <div>
       <h1>Videos</h1>
       <div className={styles.contentCss}>
+        <div className={styles.ListConent}>
         {list}
+        </div>
         <div className={styles.SelectedConent}>
           {selected}
         </div>

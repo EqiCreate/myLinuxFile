@@ -26,6 +26,7 @@ export class PlayerExample extends React.Component<Props> {
   constructor(props:Props) {
     super(props);
     this.player=React.createRef();
+    console.log("constructor for player");
 
     // this.state = {
     //   playerSource: 'test.mp4',
@@ -45,6 +46,8 @@ export class PlayerExample extends React.Component<Props> {
     // if ( playerSource !== prevProps) {
         if(this.player.current){
             this.player.current?.load();
+            // this.player.current?.pause();
+            this.player.current?.play();
         }
     // }
   }

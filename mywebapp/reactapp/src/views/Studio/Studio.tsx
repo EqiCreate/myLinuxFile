@@ -55,7 +55,7 @@ const Studio:React.FC=()=>{
             </div>
           
         );
-    },[studio.queue,studio.id]);
+    },[]);
     return <div className={`${appStyles.view} ${styles.viewLibrary}`}>
                 {/* <input  onChange={inputChange}></input> */}
                 {/* <button onClick={TrackAdd} >Add</button> */}
