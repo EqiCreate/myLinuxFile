@@ -9,6 +9,7 @@ import { Page } from '../../components/Page/Page';
 import { Video } from '../../shared/types/BLL';
 import { raw_data_videos } from '../../raw-data-videos';
 import Footer from '../../components/Footer/Footer';
+import { scheduler } from 'timers/promises';
 
 const getVideosFromRawData = (raw: any[]): Video[] => {
     return raw.map((value: any) => (
@@ -55,7 +56,7 @@ const Studio:React.FC=()=>{
             </div>
           
         );
-    },[]);
+    },[studio.queue]);
     return <div className={`${appStyles.view} ${styles.viewLibrary}`}>
                 {/* <input  onChange={inputChange}></input> */}
                 {/* <button onClick={TrackAdd} >Add</button> */}

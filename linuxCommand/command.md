@@ -1,3 +1,9 @@
+### 20230410
+- awk
+  - echo $CONTENT | awk 'BEGIN{FS="http";RS="com"}{print $2}' > ~/mydownload/2.txt :FS 分隔符，RS 分行符分成多段,，print $2 取第二段
+    - CONTENT="` wget -O - www.xxx.com`"
+  - echo $CONTENT | grep -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*com" |sort -u : 正则匹配所有http....com,并去重(sort -u)
+
 ### 20230403
 - 自启动sh
   - 在etc/systemd/system 新建xx.service

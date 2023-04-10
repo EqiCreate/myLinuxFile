@@ -8,6 +8,7 @@ import store from './store/store';
 import App from './App';
 import { Outlet } from 'react-router';
 import Settings from './views/Settings/Settings';
+import FileUploader from './components/Upload/Upload';
 
 const RouterFC: React.FC = () => {
     // const conf = config.get() as Config;
@@ -32,7 +33,7 @@ const RouterFC: React.FC = () => {
                   <Route path='/settings' element={<Settings />}>
                     {/* <Route path='library' element={<div><p>this is sss</p></div>} /> */}
                     <Route path='about' element={<div><p>this is about</p></div>} />
-                    <Route path='library' element={<div><p>this is library</p></div>} />
+                    <Route path='upload' element={<FileUploader />} />
 
                 </Route>
                 </Routes>

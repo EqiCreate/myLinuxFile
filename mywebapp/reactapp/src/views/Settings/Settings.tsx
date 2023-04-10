@@ -11,8 +11,8 @@ const Settings: React.FC = () => {
     <div className={`${styles.viewSettings}`}>
       <div className={styles.settings__nav}>
         <nav>
-        <NavLink to='/settings/library'>
-            Library
+        <NavLink to='/settings/upload'>
+            upload
           </NavLink>
           <NavLink to='/settings/about'>
             About

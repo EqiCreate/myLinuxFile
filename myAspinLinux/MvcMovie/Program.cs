@@ -26,7 +26,7 @@ using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var dd= builder.WebHost.UseUrls("http://192.168.3.61:5001");
+// var dd= builder.WebHost.UseUrls("http://192.168.3.61:5001");
 // var dd= builder.WebHost.UseUrls("http://0.0.0.0:5001");
 
 // var dd= builder.WebHost.UseUrls("http://localhost:5001");
@@ -38,6 +38,14 @@ var dd= builder.WebHost.UseUrls("http://192.168.3.61:5001");
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+builder.Services.AddCors(options=>{
+    options.AddDefaultPolicy(builder=>{
+        builder.WithOrigins("http://localhost:5002").AllowAnyHeader().AllowAnyMethod();
+        builder.WithOrigins("http://192.168.3.61:5001").AllowAnyHeader().AllowAnyMethod();
+
+    });
+
+});
 // builder.Services.Configure<HttpClientHandler>(options=>{
 //     // options.Proxy=null;
 //     // options.UseProxy=false;
@@ -68,5 +76,5 @@ app.UseAuthorization();
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
-
+app.UseCors();
 app.Run();
