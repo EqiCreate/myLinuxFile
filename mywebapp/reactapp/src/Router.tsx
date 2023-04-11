@@ -31,7 +31,6 @@ const RouterFC: React.FC = () => {
                   <Route path='/home' element={<Home/>}></Route>
                   <Route path='/studio' element={<Studio/>}></Route>
                   <Route path='/settings' element={<Settings />}>
-                    {/* <Route path='library' element={<div><p>this is sss</p></div>} /> */}
                     <Route path='about' element={<div><p>this is about</p></div>} />
                     <Route path='upload' element={<FileUploader />} />
 

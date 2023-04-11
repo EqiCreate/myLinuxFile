@@ -1,5 +1,6 @@
 import React from 'react';
 import {  NavLink, Outlet } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
 
 
 import styles from './Settings.module.css';
@@ -10,19 +11,22 @@ const Settings: React.FC = () => {
   return (
     <div className={`${styles.viewSettings}`}>
       <div className={styles.settings__nav}>
-        <nav>
+        {/* <nav > */}
         <NavLink to='/settings/upload'>
             upload
           </NavLink>
           <NavLink to='/settings/about'>
             About
           </NavLink>
-        </nav>
+        {/* </nav> */}
          
       </div>
+      
       <div className={styles.settings__content}>
         <Outlet />
       </div>
+      <ToastContainer />
+
       {/* {match && <Navigate to='/settings/library' />} */}
     </div>
   );

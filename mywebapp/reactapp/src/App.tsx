@@ -2,6 +2,7 @@ import React, { useCallback, useEffect } from 'react';
 import logo from './logo.svg';
 import './App.css';
 import 'video-react/dist/video-react.css'; // import css
+import 'react-toastify/dist/ReactToastify.css';
 import { Outlet, useNavigate } from 'react-router';
 import styles from './App.module.css';
 import Header from './components/Header/Header';

@@ -10,6 +10,7 @@ import { Video } from '../../shared/types/BLL';
 import { raw_data_videos } from '../../raw-data-videos';
 import Footer from '../../components/Footer/Footer';
 import { scheduler } from 'timers/promises';
+import { ToastContainer } from 'react-toastify';
 
 const getVideosFromRawData = (raw: any[]): Video[] => {
     return raw.map((value: any) => (
