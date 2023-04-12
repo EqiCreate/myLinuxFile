@@ -1,3 +1,8 @@
+### 20230411
+- dotnet *.dll --urls=http://yourip:7268
+- sudo apt-get --purge remove redis-server 
+- curl -X POST -F "file=@2.txt" http://localhost:7269/FileUpload/UploadwithRedis
+
 ### 20230410
 - awk
   - echo $CONTENT | awk 'BEGIN{FS="http";RS="com"}{print $2}' > ~/mydownload/2.txt :FS 分隔符，RS 分行符分成多段,，print $2 取第二段

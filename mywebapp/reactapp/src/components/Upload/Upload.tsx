@@ -44,7 +44,7 @@ export default function FileUploader() {
     if(selectedFile!=null){
       formData.append("file", selectedFile);
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "http://192.168.3.61:7268/FileUpload");
+      xhr.open("POST", "http://192.168.3.61:7268/FileUpload/UploadwithRedis");
       xhr.upload.addEventListener("progress", (event) => {
         if (event.lengthComputable) {
           const percentage = (event.loaded / event.total) * 100;

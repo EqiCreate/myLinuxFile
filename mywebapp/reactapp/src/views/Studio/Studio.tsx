@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import appStyles from '../../App.module.css';
 import styles from './Studio.module.css';
 import { useSelector } from 'react-redux';
@@ -8,23 +8,23 @@ import { PlayerExample } from '../../components/PlayerExample/PlayerExample';
 import { Page } from '../../components/Page/Page';
 import { Video } from '../../shared/types/BLL';
 import { raw_data_videos } from '../../raw-data-videos';
-import Footer from '../../components/Footer/Footer';
-import { scheduler } from 'timers/promises';
-import { ToastContainer } from 'react-toastify';
 
-const getVideosFromRawData = (raw: any[]): Video[] => {
-    return raw.map((value: any) => (
-    {
-      __typename: "video",
-      name: String(value.name.common),
-      Url: `${String(value.cca2)}`
-    }
-    ));
-  };
-  
+interface VideoMeta{
+    name:nameV,
+    cca2:string
+}
+interface nameV{
+    common:string
+}
 
 const Studio:React.FC=()=>{
     const studio = useSelector((state: RootState) => state.studio);
+    const [data, setData] = useState<VideoMeta[]|null>(null);
+    useEffect(()=>{
+        fetch('http://192.168.3.61:7268/FileUpload/top10')
+        .then(response => response.json())
+        .then(data => setData(data));
+    },[]);
     var newTrack="";
     // const[id,setid] =useState(1);
     // var id :number =0;
@@ -38,7 +38,25 @@ const Studio:React.FC=()=>{
     const inputChange=(e:React.ChangeEvent<HTMLInputElement>)=>{
         newTrack=e.target.value;
     }
+    const getVideosFromRawData = (raw: any[]): Video[] => {
+        let commbinedArr=raw;
+        if(data ==null)
+        {
 
+        }
+        else{
+            let filterData=data.filter(v=>v.name.common.endsWith("mp4"));
+            commbinedArr=[...raw,...filterData];
+        }
+        return commbinedArr.map((value: any) => (
+        {
+          __typename: "video",
+          name: String(value.name.common),
+          Url: `${String(value.cca2)}`
+        }
+        ));
+      };
+   
     const getStudioComponent=useMemo(()=>{
         // if(studio.queue.length===0){
         //     return(
