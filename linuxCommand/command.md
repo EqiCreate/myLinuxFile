@@ -2,6 +2,8 @@
 - dotnet *.dll --urls=http://yourip:7268
 - sudo apt-get --purge remove redis-server 
 - curl -X POST -F "file=@2.txt" http://localhost:7269/FileUpload/UploadwithRedis
+- redis 配置成ip ： 去除protected-mode 
+  - redis 写成一个service,比较麻烦设置的比较多
 
 ### 20230410
 - awk
