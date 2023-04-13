@@ -15,7 +15,7 @@ builder.Services.AddCors(options=>{
   builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
     {
         // var configuration = ConfigurationOptions.Parse("192.168.3.61");
-        var configuration = ConfigurationOptions.Parse("localhost");
+        var configuration = ConfigurationOptions.Parse("192.168.3.61");
 
         return ConnectionMultiplexer.Connect(configuration);
     });

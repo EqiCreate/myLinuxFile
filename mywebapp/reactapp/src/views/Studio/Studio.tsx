@@ -45,7 +45,7 @@ const Studio:React.FC=()=>{
 
         }
         else{
-            let filterData=data.filter(v=>v.name.common.endsWith("mp4"));
+            let filterData=data.filter(v=>v.name.common.endsWith("mp4") ||v.name.common.endsWith("MOV"));
             commbinedArr=[...raw,...filterData];
         }
         return commbinedArr.map((value: any) => (

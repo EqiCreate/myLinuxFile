@@ -64,7 +64,7 @@ public class FileUploadController : ControllerBase
         var hashFields = new HashEntry[]
         {
             new HashEntry("filename", uploadedFile.name.common),
-            new HashEntry("filepath", "media/"+uploadedFile.name.common)
+            new HashEntry("filepath", "media/"+$"{fileName}{extension}")
         };
         await redis.HashSetAsync(hashKey, hashFields);
         await redis.SortedSetAddAsync("uploadedFiles", uploadedFile.name.common, DateTime.UtcNow.Ticks);
