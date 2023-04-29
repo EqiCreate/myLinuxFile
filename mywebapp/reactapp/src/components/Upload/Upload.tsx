@@ -1,10 +1,10 @@
-import React, {  FormEvent,  useState } from 'react';
+import React, {  ChangeEventHandler, FormEvent,  useState } from 'react';
 import styles from './Upload.module.css';
 import { ToastContainer, toast } from 'react-toastify';
 
 export default function FileUploader() {
   const [selectedFile, setSelectedFile] = useState<File|null>(null);
-
+  const [files, setFiles] = useState<File[]>([]);
   const handleFileSelect = (event:React.ChangeEvent<HTMLInputElement>) => {
     // setSelectedFile(event.target.files[0]);
     if(event.target.files!=null){
@@ -62,16 +62,59 @@ export default function FileUploader() {
       xhr.send(formData);
     }
   };
-  
+
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const handleFilesUpload=async()=>{
+    setUploadProgress(0);
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('files[]', file);
+    });
+    xhr.open('POST', 'http://192.168.3.61:7268/FileUpload/multi-file', true);
+    xhr.upload.addEventListener('progress', (event) => {
+      const progress = Math.round((event.loaded / event.total) * 100);
+      setUploadProgress(progress);
+    });
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState === 4) {
+        if(xhr.status === 200){
+          const response = JSON.parse(xhr.responseText);
+          console.log(response);
+          toast("success uploading file");
+        }
+        else{
+          toast(xhr.responseText);
+        }
+      }
+     
+    };
+
+    xhr.upload.addEventListener("error", () => {
+      toast("Error uploading file");
+    });
+    xhr.send(formData);
+
+  }
+
+  const handleFilesSelect =(event :React.ChangeEvent<HTMLInputElement>)=>{
+    if(event.target.files!=null)
+    {
+      const selectedFiles = Array.from(event.target.files);
+      setFiles(selectedFiles);  
+    }
+      
+  }
 
   return (
     <div className={styles.ViewForm} >
-      {/* <form onSubmit={handleFileUpload}> */}
-        <input type="file" onChange={handleFileSelect} />
-        <button onClick={handleFileUpload}>Upload</button>
-        {/* <button type="submit">Upload</button> */}
-      {/* </form> */}
-      <div>{progress}%</div>
+        <input type="file" multiple onChange={handleFilesSelect} />
+        <button onClick={handleFilesUpload}>Upload</button>
+      {uploadProgress > 0 && (
+        <progress value={uploadProgress} max="100">
+          {uploadProgress}%
+        </progress>
+      )}
     </div>
   );
 }

@@ -52,12 +52,24 @@ public class FileUploadController : ControllerBase
        var mntPath= Environment.GetFolderPath(Environment.SpecialFolder.System);//home
         var filePath = Path.Combine("/media/michael","stroge","MEDIAS" ,$"{fileName}{extension}");
 
-
-        // Copy the file to the server
-        using (var stream = new FileStream(filePath, FileMode.Create))
+        try
         {
-            await file.CopyToAsync(stream);
+                // Copy the file to the server
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream);
+                if (stream.Length != file.Length)
+                {
+                    return StatusCode(500, "An error occurred while uploading the file.");
+                }
+            }
         }
+        catch (System.Exception)
+        {
+             return StatusCode(500, "An error occurred while uploading the file.");
+        }
+      
+  
         // Store the metadata of the uploaded file in Redis
         var redis = connectionMultiplexer.GetDatabase();
         var hashKey = $"file:{uploadedFile.name.common}";
@@ -71,6 +83,7 @@ public class FileUploadController : ControllerBase
 
         return Ok(new { fileName });
     }
+     
 
         [HttpGet("top10")]
         public async Task<IActionResult> GetTop10([FromServices] IConnectionMultiplexer connectionMultiplexer)
@@ -94,5 +107,46 @@ public class FileUploadController : ControllerBase
 
             return Ok(result);
         }
+
+    [HttpPost]
+    [Route("multi-file")]
+    public async Task<IActionResult> UploadFiles()
+    {
+        var files = Request.Form.Files;
+
+        if (files == null || files.Count == 0)
+        {
+            return BadRequest("No files were selected for upload.");
+        }
+
+        var filePaths = new List<string>();
+
+        foreach (var file in files)
+        {
+              var extension=Path.GetExtension(file.FileName);
+            var fileName = Path.GetRandomFileName();
+            var filePath = Path.Combine("/media/michael","stroge","MEDIAS" ,$"{fileName}{extension}");
+            filePaths.Add(filePath);
+
+             try
+            {
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                     if (stream.Length != file.Length)
+                    {
+                        return StatusCode(500, "An error occurred while uploading the file.");
+                    }
+                }
+            }
+            catch (IOException ex)
+            {
+                // _logger.LogError(ex, $"Failed to copy {file.FileName} to {filePath}");
+                return StatusCode(500, "An error occurred while uploading the file.");
+            }
+        }
+
+        return Ok(filePaths);
+    }
 
 }
