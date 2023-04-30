@@ -1,23 +1,36 @@
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using StackExchange.Redis;
 
-var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-builder.Services.AddControllersWithViews();
-builder.Services.AddCors(options=>{
-    options.AddDefaultPolicy(builder=>{
-        builder.WithOrigins("http://localhost:5002").AllowAnyHeader().AllowAnyMethod();
-        builder.WithOrigins("http://192.168.3.61:5001").AllowAnyHeader().AllowAnyMethod();
-    });
-
-});
-// Add a singleton instance of ConnectionMultiplexer to the dependency injection container
-  builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
+internal class Program
+{
+    private static void Main(string[] args)
     {
-        // var configuration = ConfigurationOptions.Parse("192.168.3.61");
-        var configuration = ConfigurationOptions.Parse("192.168.3.61");
+        var builder = WebApplication.CreateBuilder(args);
 
-        return ConnectionMultiplexer.Connect(configuration);
+        // Add services to the container.
+        builder.Services.AddControllersWithViews();
+        builder.Services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(builder =>
+            {
+                builder.WithOrigins("http://localhost:5002").AllowAnyHeader().AllowAnyMethod();
+                builder.WithOrigins("http://192.168.3.61:5001").AllowAnyHeader().AllowAnyMethod();
+            });
+
+        });
+        // Add a singleton instance of ConnectionMultiplexer to the dependency injection container
+        builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
+          {
+              // var configuration = ConfigurationOptions.Parse("192.168.3.61");
+              var configuration = ConfigurationOptions.Parse("192.168.3.61");
+
+              return ConnectionMultiplexer.Connect(configuration);
+          });
+
+    builder.Services.Configure<KestrelServerOptions>(option=>{
+        option.AllowSynchronousIO=true;
+         option.Limits.MaxRequestBodySize=null;
+         option.Limits.KeepAliveTimeout=TimeSpan.FromMinutes(15);
     });
 
 // builder.Services.Configure<HttpClientHandler>(options=>{
@@ -31,26 +44,28 @@ builder.Services.AddCors(options=>{
 // });
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
+        // Configure the HTTP request pipeline.
+        if (!app.Environment.IsDevelopment())
+        {
+            app.UseExceptionHandler("/Home/Error");
+            // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+            app.UseHsts();
+        }
+        Console.WriteLine("--------------------test begin11--------------------------------");
+        // "applicationUrl": "http://192.168.3.61:7268/",
+        // "applicationUrl": "http://localhost:7269",
+
+        app.UseHttpsRedirection();
+        app.UseStaticFiles();
+
+        app.UseRouting();
+
+        app.UseAuthorization();
+
+        app.MapControllerRoute(
+            name: "default",
+            pattern: "{controller=Home}/{action=Index}/{id?}");
+        app.UseCors();
+        app.Run();
+    }
 }
-System.Console.WriteLine("--------------------test begin11--------------------------------");
-// "applicationUrl": "http://192.168.3.61:7268/",
-// "applicationUrl": "http://localhost:7269",
-
-app.UseHttpsRedirection();
-app.UseStaticFiles();
-
-app.UseRouting();
-
-app.UseAuthorization();
-
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
-app.UseCors();
-app.Run();

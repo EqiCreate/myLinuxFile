@@ -108,11 +108,13 @@ public class FileUploadController : ControllerBase
             return Ok(result);
         }
 
+
     [HttpPost]
     [Route("multi-file")]
-    public async Task<IActionResult> UploadFiles()
+    public async Task<IActionResult> UploadFiles([FromServices] IConnectionMultiplexer connectionMultiplexer)
     {
-        var files = Request.Form.Files;
+        var filecollection = await Request.ReadFormAsync();
+        var files=filecollection.Files;
 
         if (files == null || files.Count == 0)
         {
@@ -120,17 +122,21 @@ public class FileUploadController : ControllerBase
         }
 
         var filePaths = new List<string>();
-
+        try {
         foreach (var file in files)
         {
               var extension=Path.GetExtension(file.FileName);
             var fileName = Path.GetRandomFileName();
             var filePath = Path.Combine("/media/michael","stroge","MEDIAS" ,$"{fileName}{extension}");
+             var uploadedFile = new UploadedFile
+                {
+                    name = new NameV{common= file.FileName}
+                };
             filePaths.Add(filePath);
 
-             try
-            {
+           
                 using (var stream = new FileStream(filePath, FileMode.Create))
+                //  using (var stream = new MemoryStream())
                 {
                     await file.CopyToAsync(stream);
                      if (stream.Length != file.Length)
@@ -138,15 +144,65 @@ public class FileUploadController : ControllerBase
                         return StatusCode(500, "An error occurred while uploading the file.");
                     }
                 }
-            }
+
+                 // Store the metadata of the uploaded file in Redis
+                var redis = connectionMultiplexer.GetDatabase();
+                var hashKey = $"file:{uploadedFile.name.common}";
+                var hashFields = new HashEntry[]
+                {
+                    new HashEntry("filename", uploadedFile.name.common),
+                    new HashEntry("filepath", "media/"+$"{fileName}{extension}")
+                };
+                await redis.HashSetAsync(hashKey, hashFields);
+                await redis.SortedSetAddAsync("uploadedFiles", uploadedFile.name.common, DateTime.UtcNow.Ticks);
+         }}
             catch (IOException ex)
             {
                 // _logger.LogError(ex, $"Failed to copy {file.FileName} to {filePath}");
                 return StatusCode(500, "An error occurred while uploading the file.");
             }
-        }
-
         return Ok(filePaths);
+
     }
+    // [HttpPost]
+    // [Route("multi-file")]
+    // public async Task<IActionResult> UploadFiles(List<IFormFile> files)
+    // {
+    //     // var files = Request.Form.Files;
+
+    //     if (files == null || files.Count == 0)
+    //     {
+    //         return BadRequest("No files were selected for upload.");
+    //     }
+
+    //     var filePaths = new List<string>();
+
+    //     foreach (var file in files)
+    //     {
+    //           var extension=Path.GetExtension(file.FileName);
+    //         var fileName = Path.GetRandomFileName();
+    //         var filePath = Path.Combine("/media/michael","stroge","MEDIAS" ,$"{fileName}{extension}");
+    //         filePaths.Add(filePath);
+
+    //          try
+    //         {
+    //             using (var stream = new FileStream(filePath, FileMode.Create))
+    //             {
+    //                 await file.CopyToAsync(stream);
+    //                  if (stream.Length != file.Length)
+    //                 {
+    //                     return StatusCode(500, "An error occurred while uploading the file.");
+    //                 }
+    //             }
+    //         }
+    //         catch (IOException ex)
+    //         {
+    //             // _logger.LogError(ex, $"Failed to copy {file.FileName} to {filePath}");
+    //             return StatusCode(500, "An error occurred while uploading the file.");
+    //         }
+    //     }
+
+    //     return Ok(filePaths);
+    // }
 
 }
