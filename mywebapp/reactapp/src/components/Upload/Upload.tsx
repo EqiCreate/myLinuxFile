@@ -139,10 +139,60 @@ export default function FileUploader() {
     }
   }
 
+
+  const handleFilesUploadbyAsioWithSlice=async()=>{
+
+  }
+  const CHUNK_SIZE = 1024 * 1024*20; // 20MB
+  const uploadFileWithSlice = async() => {
+    let file=files[0];
+    setUploadProgress(0);
+    const fileSize = file.size;
+    const fileName = file.name;
+    const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+    
+    let chunkIndex = 0;
+    let all_flag =true;
+    while (chunkIndex < totalChunks) {
+      const start = chunkIndex * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, fileSize);
+      const chunk = file.slice(start, end);
+      const formData = new FormData();
+      formData.append("file", chunk, fileName);
+      formData.append("chunkIndex", chunkIndex.toString());
+      formData.append("totalChunks", totalChunks.toString());
+      try {
+        await axios.post("http://192.168.3.61:7268/FileUpload/file-slice", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+          onUploadProgress: (progressEvent) => {
+            if(typeof(progressEvent.total)==='number' ){
+              const progressPercentage = Math.round(
+                (progressEvent.loaded / progressEvent.total) * 100
+              );
+              setUploadProgress(progressPercentage);
+            }
+          },
+        }).then(res=>{
+            
+        }).catch(err=>{
+          all_flag =false;
+        });
+
+        chunkIndex++;
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    if(all_flag){
+      toast("successful");
+    }
+  };
+  
   return (
     <div className={styles.ViewForm} >
-        <input type="file" multiple onChange={handleFilesSelect} />
-        <button onClick={handleFilesUploadbyAsio}>Upload</button>
+        {/* <input type="file" multiple onChange={handleFilesSelect} /> */}
+        <input type="file" onChange={handleFilesSelect} />
+        <button onClick={uploadFileWithSlice}>Upload</button>
       {uploadProgress > 0 && (
         <progress value={uploadProgress} max="100">
           {uploadProgress}%

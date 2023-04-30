@@ -29,7 +29,7 @@ internal class Program
 
     builder.Services.Configure<KestrelServerOptions>(option=>{
         option.AllowSynchronousIO=true;
-         option.Limits.MaxRequestBodySize=null;
+         option.Limits.MaxRequestBodySize=1073741824;
          option.Limits.KeepAliveTimeout=TimeSpan.FromMinutes(15);
     });
 

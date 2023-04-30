@@ -123,7 +123,7 @@ public class FileUploadController : ControllerBase
 
         var filePaths = new List<string>();
         try {
-        foreach (var file in files)
+        foreach (var file in files) 
         {
               var extension=Path.GetExtension(file.FileName);
             var fileName = Path.GetRandomFileName();
@@ -163,6 +163,64 @@ public class FileUploadController : ControllerBase
             }
         return Ok(filePaths);
 
+    }
+      private const string FILE_UPLOAD_PATH = "/media/michael/stroge/MEDIAS/";
+    [HttpPost("file-slice")]
+    public async Task<IActionResult> UploadSlice([FromForm] IFormFile file, [FromForm]int chunkIndex, [FromForm]int totalChunks
+    ,[FromServices] IConnectionMultiplexer connectionMultiplexer)
+    {   
+        int chunk_Index=Convert.ToInt32(chunkIndex);
+        int total_Chunks=Convert.ToInt32(totalChunks);
+
+         var fileName = Path.GetFileNameWithoutExtension(file.FileName);
+         var extension = Path.GetExtension(file.FileName);
+         var filePath = Path.Combine(FILE_UPLOAD_PATH, $"{fileName}_{chunkIndex}{extension}");
+         try
+         {
+             using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+        if (chunk_Index == total_Chunks - 1) // Last chunk uploaded
+            {
+                var finalFilePath = Path.Combine(FILE_UPLOAD_PATH, $"{fileName}{extension}");
+                 var uploadedFile = new UploadedFile
+                {
+                    name = new NameV{common= file.FileName}
+                };
+                using (var finalStream = new FileStream(finalFilePath, FileMode.Create))
+                {
+                    for (int i = 0; i < total_Chunks; i++)
+                    {
+                        var chunkFilePath = Path.Combine(FILE_UPLOAD_PATH, $"{fileName}_{i}{extension}");
+
+                        using (var chunkStream = new FileStream(chunkFilePath, FileMode.Open))
+                        {
+                            await chunkStream.CopyToAsync(finalStream);
+                        }
+
+                        System.IO.File.Delete(chunkFilePath);
+                    }
+                }
+                  // Store the metadata of the uploaded file in Redis
+                var redis = connectionMultiplexer.GetDatabase();
+                var hashKey = $"file:{uploadedFile.name.common}";
+                var hashFields = new HashEntry[]
+                {
+                    new HashEntry("filename", uploadedFile.name.common),
+                    new HashEntry("filepath", "media/"+$"{fileName}{extension}")
+                };
+                await redis.HashSetAsync(hashKey, hashFields);
+                await redis.SortedSetAddAsync("uploadedFiles", uploadedFile.name.common, DateTime.UtcNow.Ticks);
+            }
+
+        return Ok();
+         }
+         catch (System.Exception)
+         {
+            return StatusCode(500, "An error occurred while uploading the file.");
+         }
+       
     }
     // [HttpPost]
     // [Route("multi-file")]
