@@ -27,12 +27,12 @@ internal class Program
               return ConnectionMultiplexer.Connect(configuration);
           });
 
-    builder.Services.Configure<KestrelServerOptions>(option=>{
+        builder.Services.Configure<KestrelServerOptions>(option=>{
         option.AllowSynchronousIO=true;
          option.Limits.MaxRequestBodySize=1073741824;
          option.Limits.KeepAliveTimeout=TimeSpan.FromMinutes(15);
     });
-
+        Maintest();
 // builder.Services.Configure<HttpClientHandler>(options=>{
 //     // options.Proxy=null;
 //     // options.UseProxy=false;
@@ -42,7 +42,7 @@ internal class Program
 // builder.WebHost .UseSockets(options=>{
 //       options.Listen(System.Net.IPAddress.Parse("192.168.3.61"), 5002); // 指定 IP 地址和端口号
 // });
-var app = builder.Build();
+        var app = builder.Build();
 
         // Configure the HTTP request pipeline.
         if (!app.Environment.IsDevelopment())
@@ -67,5 +67,22 @@ var app = builder.Build();
             pattern: "{controller=Home}/{action=Index}/{id?}");
         app.UseCors();
         app.Run();
+    }
+
+
+    static async Task Maintest()
+    {
+        // var task = dotest();
+        var task =new Lazy<Task<int>>(dotest);
+        await Task.Delay(500);
+        Console.WriteLine("Awaiting...");
+        Console.WriteLine("Result is: " + await task.Value);
+    }
+    private static async Task<int> dotest()
+    {
+        Console.WriteLine("Async Start");
+        await Task.Delay(800);
+        Console.WriteLine("Async End");
+        return 42;
     }
 }
