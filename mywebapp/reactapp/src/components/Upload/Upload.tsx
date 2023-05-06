@@ -162,7 +162,7 @@ export default function FileUploader() {
       formData.append("chunkIndex", chunkIndex.toString());
       formData.append("totalChunks", totalChunks.toString());
       try {
-        await axios.post("http://192.168.3.61:7268/FileUpload/file-slice", formData, {
+        await axios.post("http://192.168.3.117:7268/FileUpload/file-slice", formData, {
           headers: { "Content-Type": "multipart/form-data" },
           onUploadProgress: (progressEvent) => {
             if(typeof(progressEvent.total)==='number' ){

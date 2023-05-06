@@ -21,7 +21,7 @@ const Studio:React.FC=()=>{
     const studio = useSelector((state: RootState) => state.studio);
     const [data, setData] = useState<VideoMeta[]|null>(null);
     useEffect(()=>{
-        fetch('http://192.168.3.61:7268/FileUpload/top10')
+        fetch('http://192.168.3.117:7268/FileUpload/top10')
         .then(response => response.json())
         .then(data => setData(data));
     },[]);

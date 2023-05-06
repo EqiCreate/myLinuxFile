@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using StackExchange.Redis;
+using System.Configuration;
 
 internal class Program
 {
@@ -14,7 +15,9 @@ internal class Program
             options.AddDefaultPolicy(builder =>
             {
                 builder.WithOrigins("http://localhost:5002").AllowAnyHeader().AllowAnyMethod();
-                builder.WithOrigins("http://192.168.3.61:5001").AllowAnyHeader().AllowAnyMethod();
+                builder.WithOrigins("http://192.168.3.117:5001").AllowAnyHeader().AllowAnyMethod();
+                builder.WithOrigins("http://192.168.3.117:8080").AllowAnyHeader().AllowAnyMethod();
+                builder.WithOrigins("http://192.168.3.117:7268").AllowAnyHeader().AllowAnyMethod();
             });
 
         });
@@ -32,9 +35,12 @@ internal class Program
          option.Limits.MaxRequestBodySize=1073741824;
          option.Limits.KeepAliveTimeout=TimeSpan.FromMinutes(15);
     });
-        Maintest();
+        // builder.Services.Configure<PositionOptions>(option=>{
+        //     builder.Configuration.GetSection(PositionOptions.Position);
+        // });
+        // Maintest();
 // builder.Services.Configure<HttpClientHandler>(options=>{
-//     // options.Proxy=null;
+//     // options.Proxy=null;i
 //     // options.UseProxy=false;
 //     options.Proxy=new WebProxy( new Uri("socks5://127.0.0.1:1090"),false);
 //     options.UseProxy=true;

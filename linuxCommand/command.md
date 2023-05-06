@@ -1,9 +1,11 @@
 ### 20230411
-- dotnet *.dll --urls=http://yourip:7268
+- dotnet MvcMovie.dll --urls=http://192.168.3.117:7268
 - sudo apt-get --purge remove redis-server 
 - curl -X POST -F "file=@2.txt" http://localhost:7269/FileUpload/UploadwithRedis
 - redis 配置成ip ： 去除protected-mode 
+  - redis-cli -h 192.168.3.61 -p 6379
   - redis 写成一个service,比较麻烦设置的比较多
+  - zrange uploadedFiles 0 -1 WITHSCORES :查看
 
 ### 20230410
 - awk

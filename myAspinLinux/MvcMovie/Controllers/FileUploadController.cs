@@ -8,6 +8,13 @@ using StackExchange.Redis;
 [Route("[controller]")]
 public class FileUploadController : ControllerBase
 {
+
+     private readonly IConfiguration _config;
+     public FileUploadController(IConfiguration config)
+     {
+        this._config=config;
+     }
+
     [HttpPost]
     public async Task<IActionResult> Upload(IFormFile file)
     {
@@ -164,11 +171,15 @@ public class FileUploadController : ControllerBase
         return Ok(filePaths);
 
     }
-      private const string FILE_UPLOAD_PATH = "/media/michael/stroge/MEDIAS/";
+    //   private const string FILE_UPLOAD_PATH = "/media/michael/stroge/MEDIAS/";
     [HttpPost("file-slice")]
     public async Task<IActionResult> UploadSlice([FromForm] IFormFile file, [FromForm]int chunkIndex, [FromForm]int totalChunks
     ,[FromServices] IConnectionMultiplexer connectionMultiplexer)
     {   
+        string FILE_UPLOAD_PATH = _config["Position:Stroge"];
+        if(string.IsNullOrWhiteSpace(FILE_UPLOAD_PATH) ){
+            return StatusCode(500, "config error.");
+        }
         int chunk_Index=Convert.ToInt32(chunkIndex);
         int total_Chunks=Convert.ToInt32(totalChunks);
 
@@ -216,7 +227,7 @@ public class FileUploadController : ControllerBase
 
         return Ok();
          }
-         catch (System.Exception)
+         catch (System.Exception e)
          {
             return StatusCode(500, "An error occurred while uploading the file.");
          }
