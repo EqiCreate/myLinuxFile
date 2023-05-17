@@ -9,7 +9,7 @@ import { Page } from '../../components/Page/Page';
 import { Video } from '../../shared/types/BLL';
 import { raw_data_videos } from '../../raw-data-videos';
 
-interface VideoMeta{
+export interface VideoMeta{
     name:nameV,
     cca2:string
 }
@@ -17,11 +17,11 @@ interface nameV{
     common:string
 }
 
-const Studio:React.FC=()=>{
+export const Studio:React.FC=()=>{
     const studio = useSelector((state: RootState) => state.studio);
     const [data, setData] = useState<VideoMeta[]|null>(null);
     useEffect(()=>{
-        fetch('http://192.168.3.117:7268/FileUpload/top10')
+        fetch('http://192.168.3.61:7268/FileUpload/top10')
         .then(response => response.json())
         .then(data => setData(data));
     },[]);
@@ -87,4 +87,4 @@ const Studio:React.FC=()=>{
         </div>;
 
 }
-export default Studio;
+// export  Studio;

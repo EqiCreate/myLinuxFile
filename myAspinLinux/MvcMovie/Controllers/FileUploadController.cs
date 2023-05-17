@@ -92,28 +92,28 @@ public class FileUploadController : ControllerBase
     }
      
 
-        [HttpGet("top10")]
-        public async Task<IActionResult> GetTop10([FromServices] IConnectionMultiplexer connectionMultiplexer)
+    [HttpGet("top10")]
+    public async Task<IActionResult> GetTop10([FromServices] IConnectionMultiplexer connectionMultiplexer)
+    {
+        var redis = connectionMultiplexer.GetDatabase();
+        var sortedSetKey = "uploadedFiles";
+        var files = await redis.SortedSetRangeByRankAsync(sortedSetKey, 0, 9, Order.Descending);
+
+        var result = new List<UploadedFile>();
+        foreach (var file in files)
         {
-            var redis = connectionMultiplexer.GetDatabase();
-            var sortedSetKey = "uploadedFiles";
-            var files = await redis.SortedSetRangeByRankAsync(sortedSetKey, 0, 9, Order.Descending);
+            var hashKey = $"file:{file}";
+            var hashFields = await redis.HashGetAllAsync(hashKey);
 
-            var result = new List<UploadedFile>();
-            foreach (var file in files)
+            result.Add(new UploadedFile
             {
-                var hashKey = $"file:{file}";
-                var hashFields = await redis.HashGetAllAsync(hashKey);
-
-                result.Add(new UploadedFile
-                {
-                    name =new NameV{ common= hashFields.FirstOrDefault(x => x.Name == "filename").Value},
-                    cca2=hashFields.FirstOrDefault(x => x.Name == "filepath").Value
-                });
-            }
-
-            return Ok(result);
+                name =new NameV{ common= hashFields.FirstOrDefault(x => x.Name == "filename").Value},
+                cca2=hashFields.FirstOrDefault(x => x.Name == "filepath").Value
+            });
         }
+
+        return Ok(result);
+    }
 
 
     [HttpPost]

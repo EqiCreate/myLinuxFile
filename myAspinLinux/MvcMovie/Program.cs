@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using StackExchange.Redis;
 using System.Configuration;
+using System.Text;
 
 internal class Program
 {
@@ -14,10 +15,10 @@ internal class Program
         {
             options.AddDefaultPolicy(builder =>
             {
-                builder.WithOrigins("http://localhost:5002").AllowAnyHeader().AllowAnyMethod();
-                builder.WithOrigins("http://192.168.3.117:5001").AllowAnyHeader().AllowAnyMethod();
-                builder.WithOrigins("http://192.168.3.117:8080").AllowAnyHeader().AllowAnyMethod();
-                builder.WithOrigins("http://192.168.3.117:7268").AllowAnyHeader().AllowAnyMethod();
+                builder.WithOrigins("http://192.168.3.61:5002").AllowAnyHeader().AllowAnyMethod();
+                builder.WithOrigins("http://192.168.3.61:5001").AllowAnyHeader().AllowAnyMethod();
+                builder.WithOrigins("http://192.168.3.61:8080").AllowAnyHeader().AllowAnyMethod();
+                builder.WithOrigins("http://192.168.3.61:7268").AllowAnyHeader().AllowAnyMethod();
             });
 
         });
@@ -49,17 +50,34 @@ internal class Program
 //       options.Listen(System.Net.IPAddress.Parse("192.168.3.61"), 5002); // 指定 IP 地址和端口号
 // });
         var app = builder.Build();
+        //   app.UseExceptionHandler("/Error/NotFound");
+        // // app.UseStatusCodePagesWithReExecute("/Error/NotFound");
+        // app.UseStatusCodePages(async context =>
+        // {
+        //     var statusCode = context.HttpContext.Response.StatusCode;
+        //     if (statusCode == 404)
+        //     {
+        //         context.HttpContext.Response.Redirect("/Error/NotFound");
+        //     }
+        // });
+        // app.UseExceptionHandler("/Error");
+        // app.UseStatusCodePagesWithRedirects("/Error/NotFound/{0}");
 
         // Configure the HTTP request pipeline.
         if (!app.Environment.IsDevelopment())
         {
-            app.UseExceptionHandler("/Home/Error");
+            Console.WriteLine("--------------------test IsDevelopment=false--------------------------------");
+            // app.UseExceptionHandler("/Home/Error");
             // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
             app.UseHsts();
         }
-        Console.WriteLine("--------------------test begin11--------------------------------");
+        else{
+            Console.WriteLine("--------------------test IsDevelopment=true--------------------------------");
+
+        }
         // "applicationUrl": "http://192.168.3.61:7268/",
         // "applicationUrl": "http://localhost:7269",
+      
 
         app.UseHttpsRedirection();
         app.UseStaticFiles();
@@ -67,11 +85,36 @@ internal class Program
         app.UseRouting();
 
         app.UseAuthorization();
-
-        app.MapControllerRoute(
-            name: "default",
-            pattern: "{controller=Home}/{action=Index}/{id?}");
         app.UseCors();
+        
+        // app.MapControllerRoute(
+        //     name: "default",
+        //     pattern: "{controller=Home}/{action=Index}/{id?}");
+        app.UseEndpoints(endpoints=>{
+                endpoints.MapControllerRoute(
+                   name: "default",
+                     pattern: "{controller=Home}/{action=Index}/{id?}");
+
+                // endpoints.MapControllerRoute(
+                //     name: "NotFound",
+                //     pattern: "*",
+                //     defaults: new { controller = "Home", action = "NotFound" });
+        });
+        //  app.Use(async (context, next) =>
+        // {
+        //     await next();
+        //     if (context.Response.StatusCode == 404)
+        //     {
+        //         context.Request.Path = "/Error/NotFound";
+        //         await next();
+        //     }
+        // });
+    //     app.MapFallback(async (ctx) =>
+    // {
+    //     ctx.Response.Body.Write(Encoding.UTF8.GetBytes("404 from Fallback"));
+    // });
+
+
         app.Run();
     }
 

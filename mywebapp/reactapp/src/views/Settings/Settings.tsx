@@ -18,6 +18,9 @@ const Settings: React.FC = () => {
           <NavLink to='/settings/about'>
             About
           </NavLink>
+          <NavLink to='/settings/download'>
+            Stored Files
+          </NavLink>
         {/* </nav> */}
          
       </div>

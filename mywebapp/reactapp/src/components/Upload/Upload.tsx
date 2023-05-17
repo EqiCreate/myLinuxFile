@@ -162,7 +162,7 @@ export default function FileUploader() {
       formData.append("chunkIndex", chunkIndex.toString());
       formData.append("totalChunks", totalChunks.toString());
       try {
-        await axios.post("http://192.168.3.117:7268/FileUpload/file-slice", formData, {
+        await axios.post("http://192.168.3.61:7268/FileUpload/file-slice", formData, {
           headers: { "Content-Type": "multipart/form-data" },
           onUploadProgress: (progressEvent) => {
             if(typeof(progressEvent.total)==='number' ){
@@ -176,15 +176,21 @@ export default function FileUploader() {
             
         }).catch(err=>{
           all_flag =false;
+          toast(  `failed for ${err}`);
         });
 
         chunkIndex++;
       } catch (error) {
+        all_flag =false;
+        toast(  `failed for ${error}`);
         console.error(error);
       }
     }
     if(all_flag){
       toast("successful");
+    }
+    else{
+      toast("failed");
     }
   };
   

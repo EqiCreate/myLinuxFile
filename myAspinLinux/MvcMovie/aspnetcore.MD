@@ -1,3 +1,37 @@
+### 20230517
+- 下载的时候需要传送一个id或者key给服务器定位，如果只是name那么就会遍历搜索导致性能过低,但如何设计这唯一标识？
+  - name 文件名，容易被猜
+  - id，如果是incresed 可能会被猜到 -> random id
+  - key ，前端需要进行 -> key
+- 全局拦截notfound 会出现一个问题，比如/FileDownload 和/xx 会正常被拦截成为404界面，但是由于/FileDownload/files是正常的，伴随着的是/FileDownload/files/1 不会被拦截到???
+- download 大文件
+  - a 标签不安全!
+  - 一般小文件直接读取所有字节到内存中返回就可以了
+  - 不考虑断点续载的话，用异步的方式，将filestream 流按照固定大小块进行切分传送也可以了 如
+    ```c#
+         var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
+        return File(fileStream, "application/octet-stream", fileName);
+    ```
+   - 考虑到断点续传续载，文件大小超过2G的话，需要写文件响应头range+totallength,需本地文件寻址，需分块，异步
+     - 响应头：```  response.Headers.Add("Content-Length", length.ToString());
+        response.Headers.Add("Content-Range", $"bytes {start}-{end}/{totalLength}");```
+    - 判断是否分块 /异步/寻址
+    ```c#   
+    if (RangeHeaderValue.TryParse(range, out rangeParser)){
+        // 块的处理，以及定位续点的位置之类
+             var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
+        fileStream.Seek(start, SeekOrigin.Begin);//寻址
+    }
+    else{
+           var response = File(fileStream, "application/octet-stream");
+        response.Headers.Add("Content-Length", totalLength.ToString());
+    }
+    ```
+
+### 20230512
+- pinvoke
+  - DllImport(endpoint=xx,charset=xx) intptr,datastruct,destroy ...
+
 ### 20230502
 - async scenerio  [here](./AsyncGuidance.md)
 - 尽量用async/await 而不是直接返回task<T>,便于调试
