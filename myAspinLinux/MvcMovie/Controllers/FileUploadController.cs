@@ -97,22 +97,40 @@ public class FileUploadController : ControllerBase
     {
         var redis = connectionMultiplexer.GetDatabase();
         var sortedSetKey = "uploadedFiles";
-        var files = await redis.SortedSetRangeByRankAsync(sortedSetKey, 0, 9, Order.Descending);
-
+        string [] suffix_allowed={"mov","mp4"};
+        int chunk=100;
+        int current_index=0;
+        int total_count=0;
+        RedisValue[] files = await redis.SortedSetRangeByRankAsync(sortedSetKey, current_index, current_index+chunk-1, Order.Descending);
         var result = new List<UploadedFile>();
-        foreach (var file in files)
-        {
-            var hashKey = $"file:{file}";
-            var hashFields = await redis.HashGetAllAsync(hashKey);
-
-            result.Add(new UploadedFile
+        while(files!=null && files.Length!=0){
+            foreach(var file in files)
             {
-                name =new NameV{ common= hashFields.FirstOrDefault(x => x.Name == "filename").Value},
-                cca2=hashFields.FirstOrDefault(x => x.Name == "filepath").Value
-            });
-        }
-
-        return Ok(result);
+                var hashKey = $"file:{file}";
+                var hashFields = await redis.HashGetAllAsync(hashKey);
+                var filename=hashFields.FirstOrDefault(x => x.Name == "filename").Value.ToString();
+                if(suffix_allowed.Any(suffix=>filename.EndsWith(suffix,true,System.Globalization.CultureInfo.CurrentCulture))){
+                    result.Add(new UploadedFile
+                    {
+                        name =new NameV{ common= filename},
+                        cca2=hashFields.FirstOrDefault(x => x.Name == "filepath").Value
+                    });   
+                    total_count++;  
+                    if(total_count>10) {
+                        break;
+                    }
+                }
+            }
+            if(total_count<10){
+                current_index=current_index+chunk;
+                files = await redis.SortedSetRangeByRankAsync(sortedSetKey, current_index, current_index+chunk-1, Order.Descending);
+            }
+            else{
+                break;
+            }
+       }
+        
+         return Ok(result);
     }
 
 
