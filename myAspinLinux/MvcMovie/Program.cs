@@ -87,19 +87,19 @@ internal class Program
         app.UseAuthorization();
         app.UseCors();
         
-        // app.MapControllerRoute(
-        //     name: "default",
-        //     pattern: "{controller=Home}/{action=Index}/{id?}");
-        app.UseEndpoints(endpoints=>{
-                endpoints.MapControllerRoute(
-                   name: "default",
-                     pattern: "{controller=Home}/{action=Index}/{id?}");
+        app.MapControllerRoute(
+            name: "default",
+            pattern: "{controller=Home}/{action=Index}/{id?}");
+        // app.UseEndpoints(endpoints=>{
+        //         endpoints.MapControllerRoute(
+        //            name: "default",
+        //              pattern: "{controller=Home}/{action=Index}/{id?}");
 
-                // endpoints.MapControllerRoute(
-                //     name: "NotFound",
-                //     pattern: "*",
-                //     defaults: new { controller = "Home", action = "NotFound" });
-        });
+        //         // endpoints.MapControllerRoute(
+        //         //     name: "NotFound",
+        //         //     pattern: "*",
+        //         //     defaults: new { controller = "Home", action = "NotFound" });
+        // });
         //  app.Use(async (context, next) =>
         // {
         //     await next();

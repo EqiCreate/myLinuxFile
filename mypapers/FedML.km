@@ -1,0 +1,162 @@
+{
+    "root": {
+        "data": {
+            "id": "csvy6wvr1fk0",
+            "created": 1685077700584,
+            "text": "FedML"
+        },
+        "children": [
+            {
+                "data": {
+                    "id": "csvy7md4amg0",
+                    "created": 1685077756054,
+                    "text": "OpenProblems",
+                    "layout_mind_offset": {
+                        "x": -119.5,
+                        "y": -62
+                    }
+                },
+                "children": [
+                    {
+                        "data": {
+                            "id": "csvy7gan8vs0",
+                            "created": 1685077742843,
+                            "text": "NonIID",
+                            "layout_mind_offset": {
+                                "x": 32,
+                                "y": -74.5
+                            },
+                            "layout_right_offset": {
+                                "x": -20.500000000000057,
+                                "y": -24.5
+                            },
+                            "priority": 2,
+                            "note": "## solutions\n方案|优点|缺点\n----|----|---\nDKWBLS,Double-kernelized weighted broad learning system|点之间添加核映射而不是随机映射，可以有效减少由任意映射引起的不确定性|?\n分类器校准|单一的全局分类模型|？"
+                        },
+                        "children": [
+                            {
+                                "data": {
+                                    "id": "csvyefwrelc0",
+                                    "created": 1685078290553,
+                                    "text": "topic"
+                                },
+                                "children": []
+                            }
+                        ]
+                    },
+                    {
+                        "data": {
+                            "id": "csvy7whx3gg0",
+                            "created": 1685077778112,
+                            "text": "Connection Cost",
+                            "layout_right_offset": {
+                                "x": -22.5,
+                                "y": 4
+                            }
+                        },
+                        "children": []
+                    },
+                    {
+                        "data": {
+                            "id": "csvyg84y7w80",
+                            "created": 1685078430362,
+                            "text": "Connection style",
+                            "priority": 2,
+                            "note": "## solutions\n方案|优点|缺点\n----|----|---\n异步联邦优化|快速收敛和容忍过时,比同步快|？"
+                        },
+                        "children": []
+                    }
+                ]
+            },
+            {
+                "data": {
+                    "id": "csvy8i2h9zc0",
+                    "created": 1685077825067,
+                    "text": "Secure",
+                    "layout_mind_offset": {
+                        "x": -85.5,
+                        "y": 19
+                    }
+                },
+                "children": [
+                    {
+                        "data": {
+                            "id": "csvy94ma5ls0",
+                            "created": 1685077874154,
+                            "text": "Attacks",
+                            "layout_left_offset": {
+                                "x": 5.833333101537505,
+                                "y": -4.99999980131787
+                            },
+                            "expandState": "expand"
+                        },
+                        "children": [
+                            {
+                                "data": {
+                                    "id": "csvy97ug9k00",
+                                    "created": 1685077881178,
+                                    "text": "Flipping Attacks",
+                                    "layout_left_offset": {
+                                        "x": 21.66666580571075,
+                                        "y": -32.49999870856607
+                                    },
+                                    "priority": 3,
+                                    "note": "## solutions\n方案|优点|缺点\n----|----|---\n数据质量检测|轻量级|i.i.d限制",
+                                    "layout_right_offset": {
+                                        "x": -31,
+                                        "y": -22
+                                    }
+                                },
+                                "children": []
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "data": {
+                    "id": "csvyixdfpds0",
+                    "created": 1685078642023,
+                    "text": "Deploy",
+                    "layout_mind_offset": {
+                        "x": 97.4999961256982,
+                        "y": 0
+                    }
+                },
+                "children": [
+                    {
+                        "data": {
+                            "id": "csvyj3uly0w0",
+                            "created": 1685078656122,
+                            "text": "Containers",
+                            "priority": 5,
+                            "layout_left_offset": {
+                                "x": 23.333332406149992,
+                                "y": -2.4999999006589633
+                            },
+                            "expandState": "collapse"
+                        },
+                        "children": [
+                            {
+                                "data": {
+                                    "id": "csvyjh1is5k0",
+                                    "created": 1685078684838,
+                                    "text": "Cost",
+                                    "note": "## solutions\n方案|优点|缺点\n----|----|---\nVM|？|忽略了整体负载并使用了固定值\n容器放置 | 节省资源使用，还可以提高利用率，考虑了资源需求和服务质量需求，还考虑了安全保证的隔离 |没有考虑负载平衡指标；没有考虑容器迁移以动态优化资源利用情况\n容器迁移|负载平衡；提高了整体服务吞吐量|没有考虑服务器之间的负载平衡\n长时间尺度上的容器放置算法和短时间尺度上的容器迁移算法| 非独立同分布（non-IID）支持; |? ",
+                                    "layout_left_offset": {
+                                        "x": 29,
+                                        "y": -38
+                                    }
+                                },
+                                "children": []
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    },
+    "template": "default",
+    "theme": "fresh-blue",
+    "version": "1.4.43"
+}
