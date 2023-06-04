@@ -13,8 +13,8 @@
                     "created": 1685077756054,
                     "text": "OpenProblems",
                     "layout_mind_offset": {
-                        "x": -119.5,
-                        "y": -62
+                        "x": -49.5,
+                        "y": -57
                     },
                     "expandState": "expand"
                 },
@@ -321,6 +321,37 @@
                             "id": "ct2nuqfa4v40",
                             "created": 1685759454755,
                             "text": "非凸问题"
+                        },
+                        "children": []
+                    }
+                ]
+            },
+            {
+                "data": {
+                    "id": "ct3m1fneoww0",
+                    "created": 1685855897588,
+                    "text": "Clusted Fedreated Learning",
+                    "layout_mind_offset": {
+                        "x": 33,
+                        "y": 50
+                    }
+                },
+                "children": [
+                    {
+                        "data": {
+                            "id": "ct3m1rcxaqo0",
+                            "created": 1685855923075,
+                            "text": "Cosine Similarity 划分c1/c2,二等分集群",
+                            "note": "参考论文[Clustered Federated Learning: Model-Agnostic\nDistributed Multitask Optimization Under Privacy Constraints](\"https://ieeexplore.ieee.org/abstract/document/9174890\")\n"
+                        },
+                        "children": []
+                    },
+                    {
+                        "data": {
+                            "id": "ct3m2cxg29c0",
+                            "created": 1685855970029,
+                            "text": "根据某个参数区分是否客户端数据集具有一致性与否",
+                            "note": "### 参数\n- 当客户端分布不一致时，FL目标的稳定解定义上对于各个客户端来说不是稳定的。因此，客户端梯度的范数必须严格大于零。\n- 相反，如果客户端分布是一致的，联邦优化将能够联合优化所有客户端的本地风险函数，因此，当我们接近稳定点时，客户端梯度的范数将趋近于零\n\n参考论文[Clustered Federated Learning: Model-Agnostic\nDistributed Multitask Optimization Under Privacy Constraints](\"https://ieeexplore.ieee.org/abstract/document/9174890\")\n"
                         },
                         "children": []
                     }
