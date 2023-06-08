@@ -262,6 +262,50 @@
                                     "text": "inversion attacks"
                                 },
                                 "children": []
+                            },
+                            {
+                                "data": {
+                                    "id": "ct6zz5wjqeg0",
+                                    "created": 1686199895053,
+                                    "text": "拜占庭攻击"
+                                },
+                                "children": [
+                                    {
+                                        "data": {
+                                            "id": "ct6zzev3nxk0",
+                                            "created": 1686199914557,
+                                            "text": "bucket + median",
+                                            "note": "- 基于主机器在接收到所有工作者的更新后，首先将更新分成k个不同的桶，计算每个桶的均值，然后根据一些鲁棒估计子程序聚合更新。最后，主机器向所有工作机器广播更新后的参数。\n\t- 子程序可以包括：\n    \t- N O - REGRET algorithm\n\t\t- F ILTERING algorithm\n        - GAN(神经网络)-based algorithm"
+                                        },
+                                        "children": []
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "data": {
+                            "id": "ct704qlhaps0",
+                            "created": 1686200331917,
+                            "text": "Privacy leak",
+                            "layout_right_offset": {
+                                "x": -11,
+                                "y": 26
+                            },
+                            "priority": 1
+                        },
+                        "children": [
+                            {
+                                "data": {
+                                    "id": "ct705f7pei00",
+                                    "created": 1686200385504,
+                                    "text": "top-k 稀疏离散化处理",
+                                    "layout_right_offset": {
+                                        "x": -22,
+                                        "y": -12
+                                    }
+                                },
+                                "children": []
                             }
                         ]
                     }
@@ -273,8 +317,8 @@
                     "created": 1685078642023,
                     "text": "Deploy",
                     "layout_mind_offset": {
-                        "x": 97.4999961256982,
-                        "y": 0
+                        "x": -79.5000038743018,
+                        "y": 184.00000000000003
                     },
                     "expandState": "expand"
                 },
