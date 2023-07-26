@@ -4,7 +4,7 @@ import { Outlet } from 'react-router';
 import { NavLink } from 'react-router-dom';
 import { PlayerStatus, TrackModel } from '../../shared/types/BLL';
 import { RootState } from '../../store/reducers';
-
+import { Button, Navbar, Container, Row, Col } from 'react-bootstrap';
 
 interface Props {
     playerStatus: PlayerStatus;
@@ -21,13 +21,13 @@ class Header extends React.Component<Props>{
             <div>
             <header>
                 <NavLink to='/home' title='home'>
-                     <button>Home</button>
+                <Button variant="primary">Home</Button>
                 </NavLink>
                 <NavLink to='/studio' title='studio'>
-                    <button>Studio</button>
+                <Button variant="primary">Studio</Button>
                 </NavLink>
                 <NavLink to='/settings' title='settings'>
-                    <button>Settings</button>
+                <Button variant="primary">Settings</Button>
                 </NavLink>
             </header>
           {/* <Outlet></Outlet> */}
