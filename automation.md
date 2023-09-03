@@ -1,10 +1,16 @@
 #/usr/local/gitcode
+socks5://127.0.0.1:1090
 # Status
 + ## Sytem
     + systemctl status
     + systemctl [xxx] start|restart
     + systemctl enable/disable [xxx] : to set up startup services|apps
       + service --status-all : check service status
+    + ufw 
+      + sudo ufw status
+      + sudo ufw enable
+      + udo ufw default allow outgoing
+      + sudo ufw allow 22/tcp
 + ## Application
 + ## Net
     + ``netstat -ntlp | grep 22``
