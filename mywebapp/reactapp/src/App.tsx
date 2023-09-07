@@ -20,12 +20,19 @@ const appMain: React.FC <Props> = ({children}) => {
   //   }, [navigate]);
   return (
       <div className={`${styles.root}`} >
-          <header className={styles.headerTest}>Header</header>
-            <Header></Header>  
-          <main className={styles.mainContent}>{children}</main>
-          <Footer></Footer>
-
-          {/* <Footer></Footer> */}
+          {/* 
+          
+          <footer>wtf</footer> */}
+           <div className={`${styles.flexitem1}`}>
+                <header className={styles.headerTest}>
+                  <Header></Header></header>
+           </div>
+           <div className={`${styles.flexitem2}`}>
+            <main className={styles.mainContent}>{children}</main>
+           </div>
+           <div className={`${styles.flexitem3}`}>
+            <Footer></Footer>
+           </div>
       </div>
   );
 };
