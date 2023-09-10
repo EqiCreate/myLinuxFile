@@ -4,10 +4,13 @@ import './App.css';
 import 'video-react/dist/video-react.css'; // import css
 import 'react-toastify/dist/ReactToastify.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import 'slick-carousel/slick/slick.css';
+import 'slick-carousel/slick/slick-theme.css';
 import { Outlet, useNavigate } from 'react-router';
 import styles from './App.module.css';
 import Header from './components/Header/Header';
 import Footer from './components/Footer/Footer';
+import {  ToastContainer } from 'react-toastify';
 
 type Props = {
   children?: React.ReactNode
@@ -20,19 +23,20 @@ const appMain: React.FC <Props> = ({children}) => {
   //   }, [navigate]);
   return (
       <div className={`${styles.root}`} >
-          {/* 
           
-          <footer>wtf</footer> */}
            <div className={`${styles.flexitem1}`}>
-                <header className={styles.headerTest}>
-                  <Header></Header></header>
+                {/* <header className={styles.headerTest}> */}
+                  {/* <Header></Header> */}
+                  <Footer></Footer>
+                {/* </header> */}
            </div>
            <div className={`${styles.flexitem2}`}>
             <main className={styles.mainContent}>{children}</main>
            </div>
            <div className={`${styles.flexitem3}`}>
-            <Footer></Footer>
+            <Header></Header>
            </div>
+           <ToastContainer />
       </div>
   );
 };

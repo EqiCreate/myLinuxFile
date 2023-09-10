@@ -197,10 +197,6 @@ export default function FileUploader() {
       }
 
     });
-    // let file=files[0];
-   
-
-
   };
   
   return (
