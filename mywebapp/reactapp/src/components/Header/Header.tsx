@@ -5,6 +5,8 @@ import { NavLink } from 'react-router-dom';
 import { PlayerStatus, TrackModel } from '../../shared/types/BLL';
 import { RootState } from '../../store/reducers';
 import { Button, Navbar, Container, Row, Col } from 'react-bootstrap';
+import { FaHome, FaInfoCircle, FaCog } from 'react-icons/fa';
+import styles from './Header.module.css';
 
 interface Props {
     playerStatus: PlayerStatus;
@@ -19,15 +21,15 @@ class Header extends React.Component<Props>{
     render(){
         return(
             <div>
-            <header>
+            <header className={`${styles.viewHeader}`}  >
                 <NavLink to='/home' title='home'>
-                <Button variant="primary">Home</Button>
+                <Button variant="primary"><FaHome></FaHome></Button>
                 </NavLink>
                 <NavLink to='/studio' title='studio'>
-                <Button variant="primary">Studio</Button>
+                <Button variant="primary"><FaInfoCircle/></Button>
                 </NavLink>
                 <NavLink to='/settings' title='settings'>
-                <Button variant="primary">Settings</Button>
+                <Button variant="primary"><FaCog/></Button>
                 </NavLink>
             </header>
           {/* <Outlet></Outlet> */}

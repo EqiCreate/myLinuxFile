@@ -6,6 +6,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'slick-carousel/slick/slick.css';
 import 'slick-carousel/slick/slick-theme.css';
+import 'react-virtualized/styles.css';
 import { Outlet, useNavigate } from 'react-router';
 import styles from './App.module.css';
 import Header from './components/Header/Header';

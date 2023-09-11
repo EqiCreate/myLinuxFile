@@ -9,7 +9,7 @@ import Button from 'react-bootstrap/Button';
 import SearchInput, {createFilter} from 'react-search-input';
 import {  toast } from 'react-toastify';
 import Slider from 'react-slick';
-
+import { List } from 'react-virtualized';
 const Home:React.FC=()=>{
 
   const settings = {
@@ -25,11 +25,32 @@ const Home:React.FC=()=>{
   const onCardClick=()=>{
     toast.success('这是一个成功通知！');
   }
+  const data = [
+    { text: 'Item 1' },
+    { text: 'Item 2' },
+    { text: 'Item 3' },
+    { text: 'Item 3' },
+    { text: 'Item 3' },
+    { text: 'Item 3' },
+    { text: 'Item 3' },
+    { text: 'Item 3' },
+    { text: 'Item 3' },
+    { text: 'Item 3' },
+    { text: 'Item 3' },
+    { text: 'Item 3' },
+
+    // ...更多数据
+  ];
+  const rowRenderer = ({ index, key, style }:any) => (
+    <div key={key} style={style}>
+      {data[index].text}
+    </div>
+  );
     const getHomeComponent=useMemo(()=>{
         return (
           <div >
             <div style={{height:'80px'}}>
-              <SearchInput style={{display:'flex', width: 'calc(100% - 20px)',height:'40px',margin:'10px auto'}} onChange={searchUpdated} />
+              <SearchInput style={{display:'flex', width: 'calc(100% - 20px)',height:'40px',margin:'10px auto',border:'2px solid blue'}} onChange={searchUpdated} />
             </div>
           <Carousel interval={5000} data-bs-theme="dark" className={`${styles.viewCarousel}`}>
           <Carousel.Item>
@@ -91,7 +112,14 @@ const Home:React.FC=()=>{
           </Card.Body>
           </Card>
         </Slider>
-       
+        <List
+          width={400} // 列表宽度
+          border={'2px solid blue'}
+          height={150} // 列表高度
+          rowCount={data.length} // 数据行数
+          rowHeight={50} // 每行高度
+          rowRenderer={rowRenderer} // 渲染行的方法
+          />
           </div>
      
         );
