@@ -1,3 +1,6 @@
+### 20230914
+  - sslocal vs ss-local
+  - 建议用ss-local 更加轻便快捷，加密协议比较丰富
 ### 20230411
 - dotnet MvcMovie.dll --urls=http://192.168.3.117:7268
 - sudo apt-get --purge remove redis-server 

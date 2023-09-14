@@ -3,6 +3,7 @@ socks5://127.0.0.1:1090
 # Status
 + ## Sytem
     + systemctl status
+    + systemctl list-units --type=service (--state=runnint)
     + systemctl [xxx] start|restart
     + systemctl enable/disable [xxx] : to set up startup services|apps
       + service --status-all : check service status
