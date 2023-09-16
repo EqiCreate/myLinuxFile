@@ -37,6 +37,7 @@ const RouterFC: React.FC = () => {
                       <Route path='upload' element={<FileUploader />} />
                       <Route path='download' element={<StoredFileList />} />
                   </Route>
+                  <Route path='/item/:id' element={<StoredFileList />}></Route>
                   <Route path='*' element={<NotFoundPage></NotFoundPage>}></Route>
                 </Routes>
               </App>

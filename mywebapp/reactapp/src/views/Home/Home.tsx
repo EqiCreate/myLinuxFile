@@ -10,6 +10,7 @@ import SearchInput, {createFilter} from 'react-search-input';
 import {  toast } from 'react-toastify';
 import Slider from 'react-slick';
 import { List } from 'react-virtualized';
+import { NavLink } from 'react-router-dom';
 const Home:React.FC=()=>{
 
   const settings = {
@@ -26,26 +27,26 @@ const Home:React.FC=()=>{
     toast.success('这是一个成功通知！');
   }
   const data = [
-    { text: 'Item 1' },
-    { text: 'Item 2' },
-    { text: 'Item 3' },
-    { text: 'Item 3' },
-    { text: 'Item 3' },
-    { text: 'Item 3' },
-    { text: 'Item 3' },
-    { text: 'Item 3' },
-    { text: 'Item 3' },
-    { text: 'Item 3' },
-    { text: 'Item 3' },
-    { text: 'Item 3' },
+    { title: 'Item 1', imageUrl: 'url1.jpg',id:1 },
+    { title: 'Item 2', imageUrl: 'url2.jpg',id:2 },
+    { title: 'Item 3', imageUrl: 'url3.jpg',id:3 },
 
     // ...更多数据
   ];
-  const rowRenderer = ({ index, key, style }:any) => (
-    <div key={key} style={style}>
-      {data[index].text}
+  const rowRenderer = ({ index, key, style }:any) => {
+    const item = data[index];
+
+  return (
+    <NavLink to={`/item/${item.id}`}>
+    <div key={key} style={style} className="list-item" >
+      <img src={item.imageUrl} alt={item.title} className="list-item-image" />
+      <span className="list-item-title">{item.title}</span>
     </div>
+    </NavLink>
+   
   );
+
+  }
     const getHomeComponent=useMemo(()=>{
         return (
           <div >
@@ -54,21 +55,21 @@ const Home:React.FC=()=>{
             </div>
           <Carousel interval={5000} data-bs-theme="dark" className={`${styles.viewCarousel}`}>
           <Carousel.Item>
-            <img src="http://e.hiphotos.baidu.com/image/pic/item/a1ec08fa513d2697e542494057fbb2fb4316d81e.jpg"/>
+            <img src="https://upload-images.jianshu.io/upload_images/5809200-a99419bb94924e6d.jpg"/>
             <Carousel.Caption>
               <h3>First slide label</h3>
               <p>Nulla vitae elit libero, a pharetra augue mollis interdum.</p>
             </Carousel.Caption>
           </Carousel.Item>
           <Carousel.Item  >
-            <img src="http://c.hiphotos.baidu.com/image/pic/item/30adcbef76094b36de8a2fe5a1cc7cd98d109d99.jpg"/>
+            <img src="https://upload-images.jianshu.io/upload_images/5809200-736bc3917fe92142.jpg"/>
             <Carousel.Caption>
               <h3>Second slide label</h3>
               <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
             </Carousel.Caption>
           </Carousel.Item>
           <Carousel.Item >
-            <img src="http://h.hiphotos.baidu.com/image/pic/item/7c1ed21b0ef41bd5f2c2a9e953da81cb39db3d1d.jpg"/>
+            <img src="https://upload-images.jianshu.io/upload_images/5809200-7fe8c323e533f656.jpg"/>
             <Carousel.Caption>
               <h3>Third slide label</h3>
               <p>
@@ -80,7 +81,7 @@ const Home:React.FC=()=>{
         
         <Slider {...settings}>
           <Card className={`${styles.viewCardContainer1}`} onClick={onCardClick}>
-          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="http://c.hiphotos.baidu.com/image/pic/item/30adcbef76094b36de8a2fe5a1cc7cd98d109d99.jpg" />
+          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="https://upload-images.jianshu.io/upload_images/5809200-a99419bb94924e6d.jpg" />
           <Card.Body >
             <Card.Text>
                 DEBUG
@@ -88,7 +89,7 @@ const Home:React.FC=()=>{
           </Card.Body>
           </Card>
           <Card className={`${styles.viewCardContainer1}`}>
-          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="http://c.hiphotos.baidu.com/image/pic/item/30adcbef76094b36de8a2fe5a1cc7cd98d109d99.jpg" />
+          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="https://upload-images.jianshu.io/upload_images/5809200-a99419bb94924e6d.jpg" />
           <Card.Body >
             <Card.Text>
                 DEBUG2
