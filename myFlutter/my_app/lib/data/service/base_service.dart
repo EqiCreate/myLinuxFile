@@ -1,6 +1,7 @@
 import '../../config/app_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart' as parser;
+import 'dart:convert';
 
 abstract class ServiceBase<T> {
   Future<T> call();
