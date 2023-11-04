@@ -1,6 +1,7 @@
 import 'package:my_app/login_page.dart';
 import 'package:provider/provider.dart';
 
+import '../pages/home_page.dart';
 import '../provider/login_provider.dart';
 
 class AppRoutes {
@@ -9,7 +10,7 @@ class AppRoutes {
           create: (context) => LoginProvider(),
           child: const LoginPage(),
         ),
-    // home: (context) => HomePage(),
+    home: (context) => const HomePage(),
     // main: (context) => MainPage(),
     // editProfile: (context) => EditProfilePage(),
     // nearby: (context) => NearbyPage(),
