@@ -1,0 +1,21 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-dll",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-shared", "-o", "my_dll.dll", "main.cpp","-fPIC"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        }
+    ]
+}
