@@ -39,7 +39,7 @@ dependencies:
   flutter_map:
   latlong2:
   path: ^1.8.3
-  # ffi: ^0.1.3
+  ffi: ^2.1.0
 
 
   # The following adds the Cupertino Icons font to your application.
