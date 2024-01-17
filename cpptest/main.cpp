@@ -29,7 +29,18 @@ extern "C" {
     void hello_world() {
         std::cout << "Hello from myFunction!" << std::endl;
     }
-    
+    int Sum(int a, int b) {
+        return a + b;
+    }
+     bool trans(const uint8_t* array, int len) {
+        std::cout << "Received data: ";
+        for (int i = 0; i < len; i++) {
+            std::cout << static_cast<int>(array[i]) << " ";
+        }
+        std::cout << std::endl;
+
+        return true;
+    }
 }
 // extern "C" {
 //     __attribute__((visibilitys("default"))) int add(int a, int b) {
