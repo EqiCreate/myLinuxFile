@@ -1,15 +1,17 @@
 import { createLogger } from 'redux-logger';
-import { configureStore, Store } from '@reduxjs/toolkit';
+import { configureStore, Store} from '@reduxjs/toolkit';
 import { persistStore, persistReducer, createTransform } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
 import {VideoPlayerState} from './reducers/videoplayer';
-
 import rootReducer, { RootState } from './reducers';
 import { PlayerStatus } from '../shared/types/BLL';
+import { Middleware } from 'redux';
+// import { applyMiddleware } from 'redux';
 
 const logger = createLogger({
     collapsed: true,
   });
+// import logger from 'redux-logger'
 
   const playerStatusTransform = createTransform(
     (ibund: VideoPlayerState)=>{
@@ -30,5 +32,9 @@ const logger = createLogger({
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 
-const store: Store<RootState> = configureStore({ reducer: persistedReducer, middleware: [logger], devTools: true });
+// const store: Store<RootState> = configureStore({ reducer: persistedReducer, middleware: [logger], devTools: true });
+const store: Store<RootState> = configureStore({ reducer: persistedReducer,
+  middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(logger as Middleware),
+  devTools: true });
+
 export default store;
