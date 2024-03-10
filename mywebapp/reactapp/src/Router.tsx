@@ -11,6 +11,7 @@ import Settings from './views/Settings/Settings';
 import FileUploader from './components/Upload/Upload';
 import StoredFileList from './components/Download/Download';
 import NotFoundPage from './components/NotFoundPage/NotFoundPage';
+import ChatRoom from './views/ChatRoom/ChatRoom';
 
 const RouterFC: React.FC = () => {
     // const conf = config.get() as Config;
@@ -31,6 +32,7 @@ const RouterFC: React.FC = () => {
               <App>
                 <Routes>
                 <Route path='/home' element={<Home/>}></Route>
+                <Route path='/chat' element={<ChatRoom/>}></Route>
                   <Route path='/studio' element={<Studio/>}></Route>
                     <Route path='/settings' element={<Settings />}>
                       <Route path='about' element={<div><p>this is about</p></div>} />
