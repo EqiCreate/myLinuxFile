@@ -23,6 +23,9 @@ export const Studio:React.FC=()=>{
     useEffect(()=>{
         fetch('http://192.168.3.61:7268/FileUpload/top10')
         .then(response => response.json())
+        .catch(error => {
+            console.error(error);
+          })
         .then(data => setData(data));
     },[]);
     var newTrack="";

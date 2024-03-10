@@ -38,10 +38,10 @@ const Home:React.FC=()=>{
 
   return (
     <NavLink to={`/item/${item.id}`}>
-    <div key={key} style={style} className="list-item" >
+    {/* <div key={key} style={style} className="list-item" >
       <img src={item.imageUrl} alt={item.title} className="list-item-image" />
-      <span className="list-item-title">{item.title}</span>
-    </div>
+      <span className="list-item-title">{item.title}</span> */}
+    {/* </div> */}
     </NavLink>
    
   );
@@ -55,21 +55,21 @@ const Home:React.FC=()=>{
             </div>
           <Carousel interval={5000} data-bs-theme="dark" className={`${styles.viewCarousel}`}>
           <Carousel.Item>
-            <img src="https://upload-images.jianshu.io/upload_images/5809200-a99419bb94924e6d.jpg"/>
+            <img src="logo192.png"/>
             <Carousel.Caption>
               <h3>First slide label</h3>
               <p>Nulla vitae elit libero, a pharetra augue mollis interdum.</p>
             </Carousel.Caption>
           </Carousel.Item>
           <Carousel.Item  >
-            <img src="https://upload-images.jianshu.io/upload_images/5809200-736bc3917fe92142.jpg"/>
+            <img src="logo512.png"/>
             <Carousel.Caption>
               <h3>Second slide label</h3>
               <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
             </Carousel.Caption>
           </Carousel.Item>
           <Carousel.Item >
-            <img src="https://upload-images.jianshu.io/upload_images/5809200-7fe8c323e533f656.jpg"/>
+            <img src="model.png"/>
             <Carousel.Caption>
               <h3>Third slide label</h3>
               <p>
@@ -81,7 +81,7 @@ const Home:React.FC=()=>{
         
         <Slider {...settings}>
           <Card className={`${styles.viewCardContainer1}`} onClick={onCardClick}>
-          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="https://upload-images.jianshu.io/upload_images/5809200-a99419bb94924e6d.jpg" />
+          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="logo192.png" />
           <Card.Body >
             <Card.Text>
                 DEBUG
@@ -89,7 +89,7 @@ const Home:React.FC=()=>{
           </Card.Body>
           </Card>
           <Card className={`${styles.viewCardContainer1}`}>
-          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="https://upload-images.jianshu.io/upload_images/5809200-a99419bb94924e6d.jpg" />
+          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="logo192.png" />
           <Card.Body >
             <Card.Text>
                 DEBUG2
@@ -97,7 +97,7 @@ const Home:React.FC=()=>{
           </Card.Body>
           </Card>
           <Card className={`${styles.viewCardContainer1}`}>
-          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="http://c.hiphotos.baidu.com/image/pic/item/30adcbef76094b36de8a2fe5a1cc7cd98d109d99.jpg" />
+          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="logo192.png" />
           <Card.Body >
             <Card.Text>
                 DEBUG3
@@ -105,7 +105,7 @@ const Home:React.FC=()=>{
           </Card.Body>
           </Card>
           <Card className={`${styles.viewCardContainer1}`}>
-          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="http://c.hiphotos.baidu.com/image/pic/item/30adcbef76094b36de8a2fe5a1cc7cd98d109d99.jpg" />
+          <Card.Img className={`${styles.viewCardImgEx}`}  variant="top" src="logo192.png" />
           <Card.Body >
             <Card.Text>
                 DEBUG4
