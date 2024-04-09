@@ -10,14 +10,16 @@ wss.on('connection', function connection(ws) {
   console.log('A client connected');
 
   // Listen for messages from clients
-  ws.on('message', function incoming(message) {
-    console.log('received: %s', message);
-
+  ws.on('message', function incoming(data) {
+    console.log('received: %s', data);
+    const message = JSON.parse(data); // Parse to add or modify the message, if necessary
+    message.receivedAt = new Date().toISOString(); // Example modification
+    const newMessage = JSON.stringify(message); // Serialize back to JSON string
     // Broadcast incoming message to all clients except the sender
     wss.clients.forEach(function each(client) {
       if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(message);
-        console.log('send: %s', message);
+        client.send(newMessage);  
+        console.log('send: %s', newMessage);
 
       }
     });

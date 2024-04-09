@@ -10,6 +10,7 @@ const ChatRoom: React.FC = () => {
   const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
+  const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
     // Assume createPeerConnection() and setupWebSocket() are implemented
@@ -69,21 +70,27 @@ const ChatRoom: React.FC = () => {
 
   const setupWebSocket = (pc: RTCPeerConnection) => {
     const ws = new WebSocket('ws://localhost:3001');
-    
+    setWs(ws);
     ws.onopen = () => {
       // You might want to send a "join" message to the signaling server here
       console.log('ws opened');
     //   ws.send('Hello Server!');
     };
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+    
 
     ws.onmessage = async (event) => {
       const message = JSON.parse(event.data);
       switch (message.type) {
         case 'offer':
-          await pc.setRemoteDescription(new RTCSessionDescription(message.offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          ws.send(JSON.stringify({ type: 'answer', answer }));
+          // await pc.setRemoteDescription(new RTCSessionDescription(message.offer));
+          // const answer = await pc.createAnswer();
+          // await pc.setLocalDescription(answer);
+          // ws.send(JSON.stringify({ type: 'answer', answer }));
+          // setMessages([...messages, { sender: 'them', content: message.text }]);
+          setMessages(prev => [...prev, { sender: 'them', content: message.text }]);
           break;
         case 'answer':
           await pc.setRemoteDescription(new RTCSessionDescription(message.answer));
@@ -113,14 +120,20 @@ const ChatRoom: React.FC = () => {
   };
 
   const sendMessage = () => {
-    if (dataChannel && dataChannel.readyState === 'open' && text.trim() !== '') {
-      dataChannel.send(text);
+    // if (dataChannel && dataChannel.readyState === 'open' && text.trim() !== '') {
+    //   dataChannel.send(text);
+    //   setMessages([...messages, { sender: 'me', content: text }]);
+    //   setText('');
+    // }
+    // else{
+    //     console.log(dataChannel?.readyState);
+    // }
+    if (ws) {
+      ws.send(JSON.stringify({ type: 'offer', text }));
       setMessages([...messages, { sender: 'me', content: text }]);
-      setText('');
+      setText('');// Clear message input after sending
     }
-    else{
-        console.log(dataChannel?.readyState);
-    }
+
   };
 
   const receiveMessage = (text: string) => {
