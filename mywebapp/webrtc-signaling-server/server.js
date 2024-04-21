@@ -1,9 +1,9 @@
 const WebSocket = require('ws');
 
 // Create a WebSocket server on port 3001 (or any port you prefer)
-const wss = new WebSocket.Server({ port: 3001 });
+const wss = new WebSocket.Server({ host:'192.168.3.61',port: 3001 });
 
-console.log('WebSocket server started on ws://localhost:3001');
+console.log('WebSocket server started on ws://192.168.3.61:3001');
 
 
 wss.on('connection', function connection(ws) {

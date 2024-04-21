@@ -2,7 +2,7 @@
   - sslocal vs ss-local
   - 建议用ss-local 更加轻便快捷，加密协议比较丰富
 ### 20230411
-- dotnet MvcMovie.dll --urls=http://192.168.3.117:7268
+- dotnet MvcMovie.dll --urls=http://192.168.3.617:7268
 - sudo apt-get --purge remove redis-server 
 - curl -X POST -F "file=@2.txt" http://localhost:7269/FileUpload/UploadwithRedis
 - redis 配置成ip ： 去除protected-mode 

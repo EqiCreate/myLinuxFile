@@ -8,25 +8,24 @@ internal class Program
     private static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
-
+        var localIp=GetLocalIPAddress();
         // Add services to the container.
         builder.Services.AddControllersWithViews();
         builder.Services.AddCors(options =>
         {
             options.AddDefaultPolicy(builder =>
             {
-                builder.WithOrigins("http://192.168.3.61:5002").AllowAnyHeader().AllowAnyMethod();
-                builder.WithOrigins("http://192.168.3.61:5001").AllowAnyHeader().AllowAnyMethod();
-                builder.WithOrigins("http://192.168.3.61:8080").AllowAnyHeader().AllowAnyMethod();
-                builder.WithOrigins("http://192.168.3.61:7268").AllowAnyHeader().AllowAnyMethod();
+                builder.WithOrigins($"http://{localIp}:5002").AllowAnyHeader().AllowAnyMethod();
+                builder.WithOrigins($"http://{localIp}:8080").AllowAnyHeader().AllowAnyMethod();
+                builder.WithOrigins($"http://{localIp}:7268").AllowAnyHeader().AllowAnyMethod();
             });
 
         });
         // Add a singleton instance of ConnectionMultiplexer to the dependency injection container
         builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
           {
-              // var configuration = ConfigurationOptions.Parse("192.168.3.61");
-              var configuration = ConfigurationOptions.Parse("192.168.3.61");
+              // var configuration = ConfigurationOptions.Parse("");
+              var configuration = ConfigurationOptions.Parse($"{localIp}");
 
               return ConnectionMultiplexer.Connect(configuration);
           });
@@ -47,7 +46,6 @@ internal class Program
 //     options.UseProxy=true;
 // });
 // builder.WebHost .UseSockets(options=>{
-//       options.Listen(System.Net.IPAddress.Parse("192.168.3.61"), 5002); // 指定 IP 地址和端口号
 // });
         var app = builder.Build();
         //   app.UseExceptionHandler("/Error/NotFound");
@@ -75,9 +73,6 @@ internal class Program
             Console.WriteLine("--------------------test IsDevelopment=true--------------------------------");
 
         }
-        // "applicationUrl": "http://192.168.3.61:7268/",
-        // "applicationUrl": "http://localhost:7269",
-      
 
         app.UseHttpsRedirection();
         app.UseStaticFiles();
@@ -133,5 +128,17 @@ internal class Program
         await Task.Delay(800);
         Console.WriteLine("Async End");
         return 42;
+    }
+    public static string GetLocalIPAddress()
+    {
+        var host = Dns.GetHostEntry(Dns.GetHostName());
+        foreach (var ip in host.AddressList)
+        {
+            if (ip.AddressFamily == AddressFamily.InterNetwork)
+            {
+                return ip.ToString();
+            }
+        }
+        throw new Exception("No network adapters with an IPv4 address in the system!");
     }
 }

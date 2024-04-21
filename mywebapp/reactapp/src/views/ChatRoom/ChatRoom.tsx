@@ -69,7 +69,7 @@ const ChatRoom: React.FC = () => {
   };
 
   const setupWebSocket = (pc: RTCPeerConnection) => {
-    const ws = new WebSocket('ws://localhost:3001');
+    const ws = new WebSocket('ws://192.168.3.61:3001');
     setWs(ws);
     ws.onopen = () => {
       // You might want to send a "join" message to the signaling server here
