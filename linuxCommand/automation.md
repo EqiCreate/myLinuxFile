@@ -30,6 +30,9 @@
     + ~~-A INPUT -s 10.0.0.36/32 -p tcp -m multiport --dports 22,80,443,8080,7231 -j ACCEPT~~
     + ~~firewall-cmd --permanent --add-rich-rule="rule family="ipv4" source address=" 10.0.0.36" port protocol="tcp" port="7231" accept"~~
     + <mark>ufw status;ufw allow xxx ;ufw enable/disable;</mark>
+    + curl --proxy "socks5://127.0.0.1:1090" "https://baidu.com" -k
+    + 重置proxy unset `env | grep -iE "all?_proxy" | cut -d= -f1`
+
 
 + ## disk
   + check the space used 

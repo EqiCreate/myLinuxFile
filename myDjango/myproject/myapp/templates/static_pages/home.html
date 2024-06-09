@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>延迟加载 JavaScript</title>
+</head>
+<body>
+    <!-- 页面内容 -->
+    <h1>欢迎访问静态网页</h1>
+
+    <!-- 延迟加载 JavaScript -->
+    <script>
+        // 等待页面加载完成后执行
+        window.onload = function() {
+            // 延迟3秒后执行 JavaScript 代码
+            setTimeout(function() {
+                // 这里放置你的 JavaScript 代码
+                alert("这是延迟加载的 JavaScript 代码");
+            }, 3000);
+        };
+    </script>
+</body>
+</html>
