@@ -40,4 +40,8 @@
    du -h --max-depth=1 . | sort -hr # check space in pwd
    rm -rf xxx #delete folder xxx
   ```
+  + 删除系统日志 近期
+  ```shell
+  sudo journalctl --vacuum-time=2weeks
+  ```
 
