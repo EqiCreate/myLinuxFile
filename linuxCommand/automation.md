@@ -11,6 +11,8 @@
       + udo ufw default allow outgoing
       + sudo ufw allow 22/tcp
 + ## Application
++ ## General
+  + ps aux , kill -9 xxx(pid)
  + ## vscode
     + <mark> proxy set for http & https
     ```json
@@ -32,6 +34,7 @@
     + <mark>ufw status;ufw allow xxx ;ufw enable/disable;</mark>
     + curl --proxy "socks5://127.0.0.1:1090" "https://baidu.com" -k
     + 重置proxy unset `env | grep -iE "all?_proxy" | cut -d= -f1`
+    `unset http_proxy https_proxy all_proxy ALL_PROXY ftp_proxy socks_proxy no_proxy HTTP_PROXY HTTPS_PROXY FTP_PROXY SOCKS_PROXY NO_PROXY`
 
 
 + ## disk

@@ -1,0 +1,6 @@
+@prefix ex: <http://example.org/> .
+@prefix schema: <http://schema.org/> .
+
+ex:Apple_Inc schema:hasKeyword "innovative", "technology" .
+ex:Apple_Inc schema:locatedIn "California", "USA" .
+ex:Apple_Inc schema:foundedBy "Steve Jobs" .

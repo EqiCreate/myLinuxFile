@@ -1,0 +1,11 @@
+- 考虑联邦学习 辅助生成数据
+- 先拿到数据集
+- 针对的问题（user requirement -> node ）
+  - <terms ,graph> -> model
+  - terms=>graph
+- local machine (win10 + 2% phone + 10% mac) + global gpu ()
+- 研究 小标题（分别如何实现）
+- 关键问题太多了，写2-3个+ 根据问题写详细点
+- 创新点写2-3个，再进行阐述
+- 流程图和公式
+- 用户需求驱动的ETL流程联邦建模技术研究

@@ -2,6 +2,7 @@
 *.zip
 *runs/
 *node_modules/
+*site-packages/
 *data/
 *env*/
 *App_x86/

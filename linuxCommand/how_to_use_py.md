@@ -3,6 +3,9 @@
 python3 -m venv --system-site-packages ./venv37
 source ./venv37/bin/activate  # sh, bash, or zsh
 ```
+``` python
+
+```
 
 ### 2.setting in vscode
 ```
