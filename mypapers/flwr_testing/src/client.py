@@ -31,7 +31,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.knowledge_base = knowledge_base
         self.embedder = embedder
 
-    def get_parameters(self):
+    def get_parameters(self,config):
         return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
 
     def set_parameters(self, parameters):
@@ -81,7 +81,8 @@ def process_user_input(user_input, knowledge_base, embedder):
         print(f"检测到相似术语: {detected_terms}")
         # 根据检测到的术语，提取对应的图结构
         # 这里可以根据具体需求进行处理
-        return None
+        return detected_terms
+        # return None
 
 def main():
     # 初始化嵌入器和知识库
@@ -111,7 +112,7 @@ def main():
 
     # 启动客户端
     client = FlowerClient(model, train_loader, device, knowledge_base, embedder)
-    fl.client.start_numpy_client(server_address="localhost:8080", client=client)
+    fl.client.start_numpy_client(server_address="localhost:9999", client=client,insecure=True)
 
 if __name__ == "__main__":
     main()

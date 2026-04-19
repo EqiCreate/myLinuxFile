@@ -1,3 +1,9 @@
+## conda
+- env
+  - conda env list
+- use
+  - conda deactivate
+  - conda activate xx
 ## 1.venv
 ```shell
 python3 -m venv --system-site-packages ./venv37

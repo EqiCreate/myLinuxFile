@@ -10,7 +10,10 @@ def main():
     )
 
     # 启动服务器
-    fl.server.start_server(server_address="localhost:9999", strategy=strategy)
+    try:
+        fl.server.start_server(server_address="127.0.0.1:9999", strategy=strategy)
+    except Exception as e:
+        print(f"Server error: {e}")
 
 if __name__ == "__main__":
     main()
